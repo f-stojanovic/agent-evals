@@ -9,74 +9,95 @@
 import type { SubjectOutput } from '../types.js';
 
 /**
- * Success carries the parsed value; failure carries a sentence a human can
- * read in a report. A discriminated union rather than `data: unknown | null`,
- * so `null` stays available as a legitimate extracted value.
+ * How the payload had to be recovered, from most to least compliant.
+ *
+ *   - `tool-call`  — the model used the tool it was given.
+ *   - `json`       — the whole response was JSON.
+ *   - `fenced`     — the whole response was a single markdown code fence.
+ *   - `scavenged`  — a fenced block had to be dug out of surrounding prose.
  */
-export type Extraction = { data: unknown } | { error: string };
+export type ExtractionRoute = 'tool-call' | 'json' | 'fenced' | 'scavenged';
+
+/**
+ * Success carries the parsed value and the route it came by; failure carries a
+ * sentence a human can read in a report. A discriminated union rather than
+ * `data: unknown | null`, so `null` stays available as a legitimate extracted
+ * value.
+ */
+export type Extraction = { data: unknown; via: ExtractionRoute } | { error: string };
 
 /**
  * Pulls the structured payload out of a subject's output.
  *
- * Resolution order, most to least trustworthy:
+ * Resolution order, most to least compliant: tool call input, bare JSON, a
+ * fence wrapping the whole response, then a fenced block scavenged out of
+ * prose.
  *
- *   1. The input of the first tool call. If the model was given a tool, using
- *      it is the intended path, and the provider has already parsed and
- *      (usually) schema-checked the arguments.
- *   2. `output.text` parsed as JSON — the response-format / "just return JSON"
- *      path.
- *   3. `output.text` with a leading and trailing markdown fence stripped, then
- *      parsed. Chat-tuned models wrap JSON in ```json ... ``` constantly, and
- *      penalising that would measure formatting compliance rather than
- *      extraction quality.
+ * WHY THIS IS LENIENT, AND WHY THAT IS NOT A CONCESSION
+ * ----------------------------------------------------
+ * Extraction accuracy ("did the model read the email correctly?") and format
+ * compliance ("did it emit clean JSON, or three paragraphs and a code block?")
+ * are different properties of a response. A scorer that refuses to parse the
+ * prose-wrapped case is not measuring extraction strictly — it is measuring
+ * the two properties multiplied together, and reporting a number that cannot
+ * distinguish a model that misread the email from one that read it perfectly
+ * and said "Here you go:" first. Those call for completely different fixes.
+ *
+ * So this recovers the payload wherever it is, records HOW it had to be
+ * recovered in `via`, and leaves format to `formatCompliance`, which scores
+ * `via` directly. Two readable numbers instead of one muddled one.
+ *
+ * The direction of this choice also matters for the baseline. Being lenient
+ * now and measuring format separately is additive: existing recorded scores
+ * stay valid and a new column appears next to them. Being strict now and
+ * relaxing later would move every extraction score upward at once, which is
+ * indistinguishable in the baseline from the model getting better — a silent
+ * rewrite of history that the gate cannot flag.
  *
  * WHY THIS NEVER THROWS
  * ---------------------
  * A model returning prose where JSON was expected is a *result*, not an
- * exception. It is one of the most interesting things a suite can tell you:
- * it means the prompt lost its grip on the output format, and you want that
- * recorded as 0.0 with a reason, sitting in the baseline next to every other
- * case, visible as a regression the day it starts happening.
- *
- * Throwing would instead abort the case, and a runner cannot tell "the model
- * wrote an essay" apart from "the API connection dropped". One is a quality
- * signal to act on; the other is infrastructure noise to retry. That
- * distinction is most of what separates an eval harness from a test runner —
- * a test runner is entitled to treat unexpected output as an error, because
- * its subject is deterministic. Ours is not.
+ * exception. It belongs in the baseline as 0.0 with a reason, visible as a
+ * regression the day it starts happening. Throwing would abort the case, and
+ * a runner cannot tell "the model wrote an essay" apart from "the connection
+ * dropped" — one is a quality signal to act on, the other is infrastructure
+ * noise to retry. That distinction is most of what separates an eval harness
+ * from a test runner, whose subject is entitled to be deterministic.
  */
 export function extractStructured(output: SubjectOutput): Extraction {
   const firstCall = output.toolCalls?.[0];
-  if (firstCall !== undefined) return { data: firstCall.input };
+  if (firstCall !== undefined) return { data: firstCall.input, via: 'tool-call' };
 
   const text = output.text;
   if (text === undefined || text.trim() === '') {
     return {
-      error: output.toolCalls?.length === 0
-        ? 'the subject returned an empty tool call list and no text'
-        : 'the subject returned no text and made no tool calls',
+      error:
+        output.toolCalls?.length === 0
+          ? 'the subject returned an empty tool call list and no text'
+          : 'the subject returned no text and made no tool calls',
     };
   }
 
   const direct = tryParseJson(text);
-  if (direct !== undefined) return direct;
+  if (direct !== undefined) return { data: direct.data, via: 'json' };
 
-  const unfenced = stripFence(text);
-  if (unfenced !== undefined) {
-    const fenced = tryParseJson(unfenced);
-    if (fenced !== undefined) return fenced;
+  const whole = stripWholeStringFence(text);
+  if (whole !== undefined) {
+    const parsed = tryParseJson(whole);
+    if (parsed !== undefined) return { data: parsed.data, via: 'fenced' };
   }
 
-  return {
-    error:
-      `expected JSON but the response did not parse as JSON` +
-      `${unfenced !== undefined ? ' (a markdown fence was stripped first)' : ''}: ${snippet(text)}`,
-  };
+  for (const block of fencedBlocks(text)) {
+    const parsed = tryParseJson(block);
+    if (parsed !== undefined) return { data: parsed.data, via: 'scavenged' };
+  }
+
+  return { error: `expected JSON but no parseable JSON was found: ${snippet(text)}` };
 }
 
-/** `undefined` means "not JSON", distinct from a successful parse of the
- *  literal `null`, which is a valid JSON document. */
-function tryParseJson(text: string): Extraction | undefined {
+/** A wrapper so a successful parse of the literal `null` stays distinguishable
+ *  from "not JSON". */
+function tryParseJson(text: string): { data: unknown } | undefined {
   try {
     return { data: JSON.parse(text) as unknown };
   } catch {
@@ -84,20 +105,20 @@ function tryParseJson(text: string): Extraction | undefined {
   }
 }
 
-/**
- * Strips a fence that wraps the *whole* response. Returns `undefined` when
- * there is no such fence.
- *
- * Deliberately not a scan for the first fenced block anywhere in the text: a
- * model that writes three paragraphs and then a code block has not complied
- * with the output format, and digging the JSON out of the prose would hide
- * that from the score. Leniency here silently changes what the suite measures
- * — extraction quality becomes extraction quality *plus* however clever the
- * harness is at scavenging.
- */
-function stripFence(text: string): string | undefined {
-  const match = /^\s*```[^\n]*\n([\s\S]*?)\n?\s*```\s*$/.exec(text);
-  return match?.[1];
+/** A fence that wraps the entire response, with nothing outside it. */
+function stripWholeStringFence(text: string): string | undefined {
+  return /^\s*```[^\n]*\n([\s\S]*?)\n?\s*```\s*$/.exec(text)?.[1];
+}
+
+/** Every fenced block in the text, in order. The first one that parses wins:
+ *  a model that emits several is usually showing its working before the
+ *  answer, and later blocks are as often commentary as payload. */
+function* fencedBlocks(text: string): Generator<string> {
+  const pattern = /```[^\n]*\n([\s\S]*?)```/g;
+  for (const match of text.matchAll(pattern)) {
+    const body = match[1];
+    if (body !== undefined) yield body;
+  }
 }
 
 function snippet(text: string): string {

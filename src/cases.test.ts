@@ -4,6 +4,8 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { CaseLoadError, loadCases } from './cases.js';
+import { validateExpectations } from './scorers/registry.js';
+import { callsTool, exactFields, matchesSchema } from './scorers/exact.js';
 
 /* Temp dirs rather than committed fixtures: each test states the exact YAML it
    is about, so a reader never has to open a second file to understand it. The
@@ -233,5 +235,17 @@ describe('loadCases', () => {
       'refund-damaged-item-01',
     ]);
     expect(cases.some((c) => c.tags?.includes('ambiguous'))).toBe(true);
+  });
+
+  it('the example suite is wired to scorers that actually measure it', async () => {
+    const dir = fileURLToPath(new URL('../evals/cases', import.meta.url));
+
+    const cases = await loadCases(dir);
+
+    /* The check the repo's own examples must pass, or the README is lying:
+       every expectation key is claimed, and no case is measured by nothing. */
+    expect(() =>
+      validateExpectations(cases, [exactFields(), matchesSchema(), callsTool()]),
+    ).not.toThrow();
   });
 });

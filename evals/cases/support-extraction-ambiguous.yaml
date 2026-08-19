@@ -39,8 +39,14 @@ expect:
     urgency: high
     customer_name: A. Novak
     requested_action: explain_cancellation_terms
-  # Alternatives a human reviewer accepted as defensible. A graded scorer
-  # should award partial credit for these rather than zero.
+# Everything below is annotation, not expectation. It lives in `meta` because
+# no scorer claims it, and an unclaimed key inside `expect` is a hard error —
+# it would otherwise look exactly like an expectation nobody got round to
+# enforcing. See validateExpectations in src/scorers/registry.ts.
+meta:
+  # Alternatives a human reviewer accepted as defensible. Not enforced yet:
+  # awarding partial credit for them needs a graded scorer that claims this
+  # key, at which point it moves back into `expect` and starts counting.
   acceptable:
     intent: [complaint, billing_question]
     urgency: [medium]

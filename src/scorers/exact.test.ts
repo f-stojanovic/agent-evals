@@ -65,10 +65,39 @@ describe('exactFields', () => {
       intent: { status: 'mismatch', expected: 'refund_request', actual: 'complaint' },
       urgency: { status: 'missing', expected: 'medium' },
     });
-    /* Extras are reported but do not reduce the score: shape enforcement is
-       matchesSchema's job. */
-    expect(score.meta?.['extra']).toEqual(['confidence']);
+    /* Always recorded, never scored: this scorer measures recall of the
+       expected fields, and folding precision in would make both unreadable.
+       Surfacing them is the report's job. */
+    expect(score.meta?.['extraFields']).toEqual(['confidence']);
     expect(score.value).toBe(0);
+  });
+
+  it('records extraFields even when every expected field matched', async () => {
+    const score = await exactFields().score({
+      case: caseWithFields({ intent: 'refund_request' }),
+      output: json({ intent: 'refund_request', confidence: 0.9, notes: 'hi' }),
+    });
+
+    expect(score.value).toBe(1);
+    expect(score.meta?.['extraFields']).toEqual(['confidence', 'notes']);
+  });
+
+  it('carries the extraction route into meta', async () => {
+    const clean = await exactFields().score({
+      case: caseWithFields({ intent: 'refund_request' }),
+      output: json({ intent: 'refund_request' }),
+    });
+    const messy = await exactFields().score({
+      case: caseWithFields({ intent: 'refund_request' }),
+      output: subjectOutput({ text: 'Sure:\n```json\n{"intent":"refund_request"}\n```' }),
+    });
+
+    /* Same field score, different route — which is the whole point of
+       keeping extraction leniency and format compliance apart. */
+    expect(clean.value).toBe(1);
+    expect(messy.value).toBe(1);
+    expect(clean.meta?.['via']).toBe('json');
+    expect(messy.meta?.['via']).toBe('scavenged');
   });
 
   it('scores 0 with a reason when the model returned prose instead of JSON', async () => {
@@ -101,17 +130,12 @@ describe('exactFields', () => {
     expect(score.meta?.['extraction']).toBe('wrong-shape');
   });
 
-  it('treats empty expectations as vacuously satisfied, never as 0/0', async () => {
-    const score = await exactFields().score({
-      case: caseWithFields({}),
-      output: json({ intent: 'anything' }),
-    });
-
-    /* Guarding the division matters: NaN here would propagate into every
-       aggregate that touches this case. */
-    expect(score.value).toBe(1);
-    expect(Number.isFinite(score.value)).toBe(true);
-    expect(score.reason).toContain('nothing to check');
+  it('rejects an empty `fields`, which asserts nothing', async () => {
+    /* Unlike `toolCalls: []`, an empty field map is a leftover rather than a
+       decision. Omitting the key is the declared way to say "skip me". */
+    await expect(
+      exactFields().score({ case: caseWithFields({}), output: json({ intent: 'anything' }) }),
+    ).rejects.toThrow(/empty `expect.fields`/);
   });
 
   it('is exact by default and tolerant only when asked', async () => {
@@ -137,6 +161,21 @@ describe('exactFields', () => {
 
     expect(score.value).toBe(0.75);
     expect(score.passed).toBe(true);
+  });
+
+  it('takes a name override, so one suite can register two configurations', async () => {
+    const strict = exactFields();
+    const lenient = exactFields({ name: 'exact-fields-lenient', normalizers: [lowercaseStrings] });
+
+    expect(strict.name).toBe('exact-fields');
+    expect(lenient.name).toBe('exact-fields-lenient');
+
+    const score = await lenient.score({
+      case: caseWithFields({ intent: 'refund_request' }),
+      output: json({ intent: 'REFUND_REQUEST' }),
+    });
+    expect(score.scorer).toBe('exact-fields-lenient');
+    expect(score.value).toBe(1);
   });
 
   it('throws when run against a case that declares no `fields`', async () => {
@@ -304,14 +343,22 @@ describe('callsTool', () => {
     expect(score.meta?.['unmatchedActual']).toEqual(['send_email']);
   });
 
-  it('treats an empty expected list as vacuously satisfied', async () => {
-    const score = await callsTool().score({
+  it('reads an empty expected list as "make no tool calls at all"', async () => {
+    /* A real assertion, not a leftover: over-eager tool use is a standard
+       agent failure mode, and this is how a case says "answer directly". */
+    const compliant = await callsTool().score({
       case: toolCase([]),
-      output: subjectOutput({ toolCalls: [{ name: 'anything', input: {} }] }),
+      output: subjectOutput({ text: 'The notice period is 30 days.' }),
+    });
+    const overEager = await callsTool().score({
+      case: toolCase([]),
+      output: subjectOutput({ toolCalls: [{ name: 'search_docs', input: {} }] }),
     });
 
-    expect(score.value).toBe(1);
-    expect(score.reason).toContain('nothing to check');
+    expect(compliant.value).toBe(1);
+    expect(overEager.value).toBe(0);
+    expect(overEager.reason).toContain('search_docs');
+    expect(overEager.meta?.['unmatchedActual']).toEqual(['search_docs']);
   });
 
   it('throws when `expect.toolCalls` is malformed', async () => {

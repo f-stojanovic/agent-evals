@@ -2,14 +2,15 @@
  * Wiring checks between the cases and the scorers that will run against them.
  *
  * This runs before the first API call. Everything it catches is a mistake that
- * would otherwise surface as a *passing* run — which is why it is a hard error
- * rather than a warning.
+ * would otherwise surface as a *passing* run — which is why every one of them
+ * is a hard error and none of them is a flag.
  */
 
 import { ProblemListError } from '../errors.js';
-import type { EvalCase, Scorer } from '../types.js';
+import type { EvalCase, ExpectationClaim, Scorer } from '../types.js';
 
-/** Scorers and cases disagree about who owns which expectation key. */
+/** Scorers and cases disagree about who owns which expectation key, or a case
+ *  ends up measured by nothing at all. */
 export class ExpectationError extends ProblemListError {
   override readonly name = 'ExpectationError';
 
@@ -18,92 +19,237 @@ export class ExpectationError extends ProblemListError {
   }
 }
 
+/** How many case ids to name before summarising the rest. */
+const MAX_LISTED_IDS = 5;
+
 /**
- * Asserts that every expectation key in every case is claimed by exactly one
- * registered scorer.
+ * Whether a scorer can run against a case, and what is missing if not.
  *
- * THE FAILURE MODE THIS EXISTS TO PREVENT
- * ---------------------------------------
+ * `applies` is about capability: every required claim is present, so the
+ * scorer has what it needs. `measures` is a stricter question — does this case
+ * actually ask this scorer for anything? A scorer with no required claims
+ * (`formatCompliance`) applies to every case in the suite, which is correct
+ * for running it but would neutralise the fully-skipped-case guard below if it
+ * also counted as measurement. So a scorer measures a case only when at least
+ * one of its claimed keys is actually present in that case's `expect`.
+ */
+export type Applicability = {
+  scorer: Scorer;
+  applies: boolean;
+  measures: boolean;
+  missingRequired: readonly string[];
+};
+
+/** Which of `scorers` can run against `evalCase`. This is the check the runner
+ *  performs per case; a scorer that does not apply is skipped, not failed. */
+export function applicableScorers(
+  evalCase: EvalCase,
+  scorers: readonly Scorer[],
+): readonly Scorer[] {
+  return scorers.filter((scorer) => assess(evalCase, scorer).applies);
+}
+
+function assess(evalCase: EvalCase, scorer: Scorer): Applicability {
+  const missingRequired = scorer.claims
+    .filter((claim: ExpectationClaim) => claim.required && !(claim.key in evalCase.expect))
+    .map((claim) => claim.key);
+  const present = scorer.claims.filter((claim) => claim.key in evalCase.expect);
+
+  const applies = missingRequired.length === 0;
+  return { scorer, applies, measures: applies && present.length > 0, missingRequired };
+}
+
+/**
+ * Asserts that the suite and its scorers are wired such that every case is
+ * actually measured by something.
+ *
+ * TWO HALVES OF ONE GUARANTEE
+ * ---------------------------
  * `EvalCase.expect` is an open record, because each scorer owns its own keys
  * and a closed type would couple the case contract to its consumers. The cost
- * of that openness is that a typo is invisible:
+ * of that openness is that silence is ambiguous, and it fails in two
+ * directions:
  *
- *     expect:
- *       field:            # meant `fields:`
- *         intent: refund
+ *   1. A key nobody reads. Write `field:` where you meant `fields:` and the
+ *      file is valid YAML, satisfies the case schema, and loads without
+ *      complaint — then is read by nobody. The expectation exists and is
+ *      enforced by nothing.
  *
- * The file is valid YAML, satisfies the case schema, and loads without
- * complaint. `exactFields` looks for `fields`, does not find it, and has
- * nothing to score. The case runs, costs money, and contributes a perfect
- * score for having checked nothing. The suite is green and measures less than
- * it did yesterday, with no signal anywhere that this happened.
+ *   2. A case nobody measures. Every scorer skips it, correctly and
+ *      individually: no `fields`, no `schema`, no `toolCalls`. Each skip is a
+ *      reasonable local decision; together they mean the case runs, costs
+ *      money, and produces a result with no checks in it.
  *
- * That is strictly worse than a red suite: a red suite is investigated, and a
- * green one buys confidence that was never earned. So an unclaimed key fails
- * the run, and the error prints the claimed keys next to the unclaimed one —
- * the correct spelling is almost always sitting right there in the list.
+ * Either one produces a green suite that measures less than it did yesterday,
+ * with no signal that it happened. That is strictly worse than a red suite: a
+ * red suite gets investigated, and a green one sells confidence nobody earned.
+ * So both are hard errors, and a case that nothing measures is impossible to
+ * commit.
  *
  * Annotations that are genuinely not expectations belong in
- * {@link EvalCase.meta}, which is outside `expect` entirely and is never
- * checked here.
+ * {@link EvalCase.meta} — but see the collision check below, because `meta` is
+ * a place to put things that are not expectations, not a second place to put
+ * things that are.
  *
  * @throws {ExpectationError} listing every problem found, in one pass.
  */
-export function validateExpectations(
-  cases: readonly EvalCase[],
-  scorers: readonly Scorer[],
-): void {
+export function validateExpectations(cases: readonly EvalCase[], scorers: readonly Scorer[]): void {
   const problems: string[] = [];
 
   /* Scorer-side problems first: if the registry itself is inconsistent, the
-     case-side report below is built on a claim set that cannot be trusted, and
+     case-side report is built on a claim set that cannot be trusted, and
      leading with fifty downstream symptoms would bury the cause. */
-  const seenNames = new Set<string>();
   const owners = new Map<string, string>();
+  const seenNames = new Set<string>();
 
   for (const scorer of scorers) {
     if (seenNames.has(scorer.name)) {
       problems.push(
         `duplicate scorer name "${scorer.name}": names become baseline columns, ` +
-          `so two scorers sharing one would overwrite each other's history`,
+          `so two scorers sharing one would overwrite each other's history. ` +
+          `Pass a \`name\` option to distinguish them`,
       );
       continue;
     }
     seenNames.add(scorer.name);
 
-    for (const key of scorer.claims) {
-      const owner = owners.get(key);
+    /* UNRESOLVED TENSION, flagged rather than papered over.
+       One key, one owner. That rule and the `name` override on the scorer
+       factories pull against each other: the override exists so a suite can
+       register `exactFields` twice — strict on one set of fields, whitespace-
+       tolerant on another — and both instances necessarily claim `fields`, so
+       this rejects them however they are named.
+
+       The rule's original justification (that otherwise "which scorer reads
+       the key depends on registration order") does not actually hold, because
+       nothing dispatches by key: the runner runs every applicable scorer and
+       each writes its own baseline column. Two scorers reading `fields` is
+       unambiguous — they both read it.
+
+       Kept as specified for now because relaxing it would weaken a guard that
+       is cheap and has caught real mistakes. The narrower rule that would
+       preserve both is: reject a duplicate claim only when the two scorers
+       come from the same factory with identical configuration, which needs a
+       factory identity that `Scorer` does not currently carry. */
+    for (const claim of scorer.claims) {
+      const owner = owners.get(claim.key);
       if (owner !== undefined) {
         problems.push(
-          `expectation key "${key}" is claimed by both "${owner}" and "${scorer.name}": ` +
-            `ownership must be unambiguous, since otherwise which scorer reads it ` +
-            `depends on registration order`,
+          `expectation key "${claim.key}" is claimed by both "${owner}" and ` +
+            `"${scorer.name}": ownership must be unambiguous, since otherwise which ` +
+            `scorer reads it depends on registration order`,
         );
         continue;
       }
-      owners.set(key, scorer.name);
+      owners.set(claim.key, scorer.name);
     }
   }
 
-  const claimed = [...owners.keys()].sort();
-  const claimedList =
-    claimed.length > 0
-      ? claimed.map((key) => `"${key}"`).join(', ')
-      : '(none — no registered scorer claims any expectation key)';
+  const claimedKeys = [...owners.keys()].sort();
+
+  /* Grouped by key rather than by case: one mistyped key copy-pasted across
+     fifty cases is one mistake, and fifty near-identical lines would bury the
+     other problems in the same report. */
+  const unclaimed = new Map<string, string[]>();
 
   for (const evalCase of cases) {
-    /* Sorted so the report does not depend on YAML key order. An empty
-       `expect` is legal: a scorer may need no expectations at all. */
     for (const key of Object.keys(evalCase.expect).sort()) {
       if (owners.has(key)) continue;
+      const ids = unclaimed.get(key);
+      if (ids === undefined) unclaimed.set(key, [evalCase.id]);
+      else ids.push(evalCase.id);
+    }
+
+    /* `meta` is for things that are not expectations. A key there that a
+       scorer claims is never a deliberate choice — it is an expectation that
+       was moved out of harm's way and is now silently unenforced. No opt-in
+       switch: a control nobody enables is not a control. */
+    for (const key of Object.keys(evalCase.meta ?? {}).sort()) {
+      const owner = owners.get(key);
+      if (owner === undefined) continue;
       problems.push(
-        `case "${evalCase.id}": expectation key "${key}" is not claimed by any scorer, ` +
-          `so nothing would read it and the case would score as if it had no ` +
-          `expectations. Claimed keys are: ${claimedList}. ` +
-          `If this is an annotation rather than an expectation, move it to \`meta\``,
+        `case "${evalCase.id}": \`meta.${key}\` collides with the expectation key ` +
+          `claimed by "${owner}". \`meta\` is never scored, so an expectation placed ` +
+          `there is silently ignored — move it into \`expect\``,
       );
     }
+
+    const assessments = scorers.map((scorer) => assess(evalCase, scorer));
+    if (!assessments.some((a) => a.measures)) {
+      problems.push(`case "${evalCase.id}" is measured by no scorer: ${explainSkips(assessments)}`);
+    }
+  }
+
+  for (const [key, ids] of [...unclaimed.entries()].sort(([a], [b]) => compare(a, b))) {
+    problems.push(
+      `unclaimed key "${key}" in ${ids.length} ${ids.length === 1 ? 'case' : 'cases'} ` +
+        `(${explainUnclaimed(key, claimedKeys)}): ${listIds(ids)}`,
+    );
   }
 
   if (problems.length > 0) throw new ExpectationError(problems);
+}
+
+/** Says, per scorer, exactly why it will not measure this case — the author
+ *  needs the missing key name, not the fact that something was skipped. */
+function explainSkips(assessments: readonly Applicability[]): string {
+  if (assessments.length === 0) return 'no scorers are registered';
+  return assessments
+    .map(({ scorer, applies, missingRequired }) =>
+      applies
+        ? `"${scorer.name}" reads none of this case's expectation keys`
+        : `"${scorer.name}" skipped (missing required ${missingRequired
+            .map((key) => `"${key}"`)
+            .join(', ')})`,
+    )
+    .join('; ');
+}
+
+function explainUnclaimed(key: string, claimedKeys: readonly string[]): string {
+  const suggestion = nearest(key, claimedKeys);
+  if (suggestion !== undefined) return `no scorer claims it; did you mean "${suggestion}"?`;
+  if (claimedKeys.length === 0) return 'no registered scorer claims any expectation key';
+  return `no scorer claims it; claimed keys are ${claimedKeys.map((k) => `"${k}"`).join(', ')}`;
+}
+
+function listIds(ids: readonly string[]): string {
+  const shown = ids.slice(0, MAX_LISTED_IDS).join(', ');
+  const remaining = ids.length - Math.min(ids.length, MAX_LISTED_IDS);
+  return remaining > 0 ? `${shown}, ... (+${remaining} more)` : shown;
+}
+
+/** Closest claimed key within a distance that scales with length, so `field`
+ *  suggests `fields` but `notes` does not suggest `tools`. */
+function nearest(key: string, candidates: readonly string[]): string | undefined {
+  const budget = Math.max(1, Math.floor(key.length / 3));
+  let best: { key: string; distance: number } | undefined;
+
+  for (const candidate of candidates) {
+    const distance = editDistance(key.toLowerCase(), candidate.toLowerCase());
+    if (distance > budget) continue;
+    if (best === undefined || distance < best.distance) best = { key: candidate, distance };
+  }
+  return best?.key;
+}
+
+/** Levenshtein, single-row. Inlined rather than pulled from a dependency:
+ *  it is fifteen lines and only ever runs on a failure path. */
+function editDistance(a: string, b: string): number {
+  let previous = Array.from({ length: b.length + 1 }, (_, i) => i);
+
+  for (let i = 1; i <= a.length; i += 1) {
+    const current = [i];
+    for (let j = 1; j <= b.length; j += 1) {
+      const substitution = (previous[j - 1] ?? 0) + (a[i - 1] === b[j - 1] ? 0 : 1);
+      const deletion = (previous[j] ?? 0) + 1;
+      const insertion = (current[j - 1] ?? 0) + 1;
+      current.push(Math.min(substitution, deletion, insertion));
+    }
+    previous = current;
+  }
+  return previous[b.length] ?? 0;
+}
+
+function compare(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
 }

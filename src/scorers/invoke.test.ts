@@ -9,7 +9,7 @@ import type { Score, Scorer } from '../types.js';
 function scorerReturning(name: string, score: unknown): Scorer {
   return {
     name,
-    claims: ['fields'],
+    claims: [{ key: 'fields', required: true }],
     score: (): Promise<Score> => Promise.resolve(score as Score),
   };
 }
@@ -90,7 +90,7 @@ describe('invokeScorer', () => {
   it('does not catch exceptions from the scorer — that is the runner\'s job', async () => {
     const scorer: Scorer = {
       name: 'explodes',
-      claims: ['fields'],
+      claims: [{ key: 'fields', required: true }],
       score: () => Promise.reject(new Error('provider timeout')),
     };
 

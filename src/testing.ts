@@ -1,10 +1,25 @@
 /**
- * Fixture builders for the domain types.
+ * Fixture builders for the domain types. PUBLIC API, exported from the package
+ * root and covered by its own tests.
  *
- * Shipped rather than kept in a test folder: anyone writing a scorer against
- * this package needs to construct a `SubjectOutput` to test it, and hand-
- * rolling one means restating `raw`, `model`, `usage`, and `latencyMs` on
- * every single test — noise that buries the one field the test is about.
+ * Deliberate, not incidental. The main reason to use this harness is to write
+ * scorers for your own domain, and testing a scorer means constructing a
+ * `SubjectOutput` — which without these means restating `raw`, `model`,
+ * `usage`, and `latencyMs` in every single test, noise that buries the one
+ * field the test is actually about. Leaving consumers to hand-roll that is
+ * leaving the most common task in the package unsupported.
+ *
+ * Being API has consequences, which is the point of saying so:
+ *
+ *   - The defaults are part of the contract. Tests elsewhere assert against
+ *     them, so changing `model` from `'test-model'` is a breaking change, not
+ *     a tidy-up.
+ *   - Every builder takes overrides and omits absent optional keys rather than
+ *     setting them to `undefined`, matching what the loader produces under
+ *     `exactOptionalPropertyTypes`. A fixture that is subtly a different shape
+ *     from real data is worse than no fixture.
+ *   - It ships in `dist`. It is small, dependency-free, and importing it does
+ *     not pull in a test framework.
  */
 
 import type { EvalCase, SubjectContext, SubjectOutput, ToolCall } from './types.js';

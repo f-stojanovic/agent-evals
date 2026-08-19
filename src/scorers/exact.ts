@@ -38,7 +38,15 @@ export const trimStrings: FieldNormalizer = (value) => mapStrings(value, (s) => 
 export const lowercaseStrings: FieldNormalizer = (value) =>
   mapStrings(value, (s) => s.toLowerCase());
 
-export type ExactFieldsOptions = {
+/** Every factory takes this. A suite legitimately registers the same scorer
+ *  twice with different settings — strict on `intent`, whitespace-tolerant on
+ *  `customer_name` — and two scorers cannot share a name, since the name is a
+ *  baseline column. */
+export type NamedScorerOptions = {
+  readonly name?: string;
+};
+
+export type ExactFieldsOptions = NamedScorerOptions & {
   /**
    * Applied left to right, to both sides. Empty by default: exact means exact
    * unless the author asks otherwise. Case and whitespace tolerance is a
@@ -63,7 +71,7 @@ export type ExactFieldsOptions = {
  * moves the suite mean by a lot in this one.
  */
 export function exactFields(options: ExactFieldsOptions = {}): Scorer {
-  const name = 'exact-fields';
+  const name = options.name ?? 'exact-fields';
   const normalizers = options.normalizers ?? [];
   const threshold = options.threshold ?? 1;
   const normalize = (value: unknown): unknown =>
@@ -71,7 +79,7 @@ export function exactFields(options: ExactFieldsOptions = {}): Scorer {
 
   return {
     name,
-    claims: ['fields'],
+    claims: [{ key: 'fields', required: true }],
     /* `async` with nothing awaited: the Scorer contract is async so that a
        deterministic scorer can be swapped for a judge without changing any
        call site. */
@@ -80,15 +88,23 @@ export function exactFields(options: ExactFieldsOptions = {}): Scorer {
 
       const fieldNames = Object.keys(expected);
       if (fieldNames.length === 0) {
-        /* Guarded rather than divided: 0/0 is NaN, and a NaN score poisons
-           every aggregate downstream. See the note in invoke.ts. */
-        return {
-          scorer: name,
-          value: 1,
-          passed: threshold <= 1,
-          reason: 'no fields expected, nothing to check',
-          meta: { expected: 0, matched: 0, fields: {}, extra: [] },
-        };
+        /* `fields: {}` is an error, while `toolCalls: []` a few hundred lines
+           down is legal. The difference is what the empty container can mean:
+           an empty tool call list is a real assertion ("the model should
+           answer directly, calling nothing"), whereas an empty field map
+           asserts nothing about anything. It is a leftover from deleting the
+           last field, and the author who wanted no field check should have
+           omitted the key — at which point this scorer is skipped, which is
+           the declared way to say "does not apply".
+
+           That rule cannot live in the harness, because the harness cannot
+           know which of a scorer's empty containers are meaningful. It belongs
+           to each scorer, next to the semantics it depends on. */
+        throw new Error(
+          `Scorer "${name}": case "${evalCase.id}" has an empty \`expect.fields\`, ` +
+            `which asserts nothing. Omit the key entirely to skip this scorer for ` +
+            `the case`,
+        );
       }
 
       const extraction = extractStructured(output);
@@ -131,11 +147,17 @@ export function exactFields(options: ExactFieldsOptions = {}): Scorer {
         }
       }
 
-      /* Extra keys are recorded but do not reduce the score: this scorer
-         measures whether the expected fields are right, not whether the output
-         is minimal. Shape enforcement belongs to `matchesSchema`, where an
-         author can opt into it with `additionalProperties: false`. */
-      const extra = Object.keys(actual)
+      /* ALWAYS RECORDED, NEVER SCORED.
+         Keys the model produced that no expectation mentions are real
+         information — hallucinated fields, a schema that drifted, a prompt
+         leaking its scratch work — and the report is responsible for surfacing
+         them. They do not move the score, because this scorer measures recall
+         of the expected fields and nothing else. Folding precision into the
+         same number would make both unreadable: 0.8 would no longer answer
+         "how much of what I asked for did it get right?", and no other number
+         would answer it either. A suite that wants precision enforced says so
+         with `matchesSchema` and `additionalProperties: false`. */
+      const extraFields = Object.keys(actual)
         .filter((key) => !(key in expected))
         .sort();
 
@@ -152,7 +174,10 @@ export function exactFields(options: ExactFieldsOptions = {}): Scorer {
         reason:
           `${matched}/${fieldNames.length} fields matched` +
           (notes.length > 0 ? ` (${notes.join('; ')})` : ''),
-        meta: { expected: fieldNames.length, matched, fields, extra },
+        /* `via` travels with every score derived from an extraction, so a
+           report can tell a genuine field error apart from one that only
+           happened because the payload had to be dug out of prose. */
+        meta: { via: extraction.via, expected: fieldNames.length, matched, fields, extraFields },
       };
     },
   };
@@ -186,13 +211,13 @@ type FieldOutcome =
  * keyword. The suite should fail on the model being wrong, not on the author
  * using a keyword Ajv did not expect.
  */
-export function matchesSchema(): Scorer {
-  const name = 'matches-schema';
+export function matchesSchema(options: NamedScorerOptions = {}): Scorer {
+  const name = options.name ?? 'matches-schema';
   const ajv = new Ajv({ allErrors: true, strict: false });
 
   return {
     name,
-    claims: ['schema'],
+    claims: [{ key: 'schema', required: true }],
     async score({ case: evalCase, output }: ScoreArgs): Promise<Score> {
       const schema = readExpectation(name, 'schema', evalCase);
       if (!isRecord(schema) && typeof schema !== 'boolean') {
@@ -224,7 +249,13 @@ export function matchesSchema(): Scorer {
 
       const valid = validate(extraction.data);
       if (valid) {
-        return { scorer: name, value: 1, passed: true, reason: 'output satisfies the schema' };
+        return {
+          scorer: name,
+          value: 1,
+          passed: true,
+          reason: 'output satisfies the schema',
+          meta: { via: extraction.via },
+        };
       }
 
       const errors = validate.errors ?? [];
@@ -233,7 +264,7 @@ export function matchesSchema(): Scorer {
         value: 0,
         passed: false,
         reason: `output violates the schema: ${summariseAjvErrors(errors)}`,
-        meta: { errors },
+        meta: { via: extraction.via, errors },
       };
     },
   };
@@ -252,7 +283,7 @@ function summariseAjvErrors(errors: readonly ErrorObject[]): string {
  * callsTool
  * ------------------------------------------------------------------ */
 
-export type CallsToolOptions = {
+export type CallsToolOptions = NamedScorerOptions & {
   /** `passed` cutoff. Defaults to 1 — every expected call must be present. */
   readonly threshold?: number;
 };
@@ -276,26 +307,47 @@ export type CallsToolOptions = {
  * assert it with `matchesSchema` and `additionalProperties: false`.
  */
 export function callsTool(options: CallsToolOptions = {}): Scorer {
-  const name = 'calls-tool';
+  const name = options.name ?? 'calls-tool';
   const threshold = options.threshold ?? 1;
 
   return {
     name,
-    claims: ['toolCalls'],
+    claims: [{ key: 'toolCalls', required: true }],
     async score({ case: evalCase, output }: ScoreArgs): Promise<Score> {
       const expected = readExpectedToolCalls(name, evalCase);
+      const actual = output.toolCalls ?? [];
 
       if (expected.length === 0) {
+        /* `toolCalls: []` IS AN ASSERTION, unlike the empty `fields: {}` that
+           this file rejects further up. "The model should answer directly
+           without reaching for a tool" is a real and frequently violated
+           expectation — over-eager tool use is one of the standard agent
+           failure modes. So an empty list means zero calls, and any call at
+           all fails it.
+
+           The two empty containers differ because their semantics differ, and
+           that is exactly why the rule lives in each scorer rather than in the
+           harness: nothing generic can know which of a scorer's empty
+           containers carries meaning. */
+        const value = actual.length === 0 ? 1 : 0;
         return {
           scorer: name,
-          value: 1,
-          passed: threshold <= 1,
-          reason: 'no tool calls expected, nothing to check',
-          meta: { expected: 0, matched: 0, missing: [], unmatchedActual: [] },
+          value,
+          passed: value >= threshold,
+          reason:
+            value === 1
+              ? 'no tool calls expected and none were made'
+              : `no tool calls expected but ${actual.length} were made ` +
+                `(${actual.map((c) => c.name).join(', ')})`,
+          meta: {
+            expected: 0,
+            matched: 0,
+            missing: [],
+            unmatchedActual: actual.map((c) => c.name),
+          },
         };
       }
 
-      const actual = output.toolCalls ?? [];
       /* Each actual call may satisfy at most one expectation, so expecting the
          same call twice genuinely requires it to have happened twice. */
       const consumed = new Set<number>();

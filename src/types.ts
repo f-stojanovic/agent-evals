@@ -90,14 +90,32 @@ export type SubjectContext = {
    * 0-based retry counter, incremented by the runner on each re-attempt of the
    * same case.
    *
-   * Legitimate uses are observational or infrastructural: tagging a log line,
-   * busting a response cache so a retry is not served the same failure, or
-   * widening a client-side timeout.
+   * THE RULE
+   * --------
+   * The request sent to the model must be byte-identical across attempts:
+   * same prompt, same parameters, same tool definitions. Everything outside
+   * that request is free to differ — transport, timeouts, connection pooling,
+   * logging, tracing, and cache behaviour.
    *
-   * It must not change what the subject *does*. A subject that, say, switches
-   * to a stricter prompt on attempt 1 is no longer the artefact the baseline
-   * describes: the recorded score would reflect a system the deployed one does
-   * not match, which is the one thing an eval must never do.
+   * The line is drawn at the request rather than at "behaviour" because that
+   * is the boundary a baseline actually describes. A subject that switches to
+   * a stricter prompt on attempt 1 records a score for a system the deployed
+   * one does not match, which is the one thing an eval must never do. A
+   * subject that skips its HTTP cache on attempt 1 records a score for exactly
+   * the same system, sampled again.
+   *
+   * TWO CONSEQUENCES — POLICY, NOT IMPLEMENTATION DETAIL
+   * ----------------------------------------------------
+   * 1. `attempt > 0` always bypasses the cache. A retry exists to re-roll the
+   *    sample from a stochastic system; serving the cached response would
+   *    return the identical failure and make the retry a no-op that costs
+   *    wall-clock and proves nothing.
+   *
+   * 2. Baseline recording and CI runs disable the cache entirely, including on
+   *    attempt 0. A baseline assembled from replayed responses is a record of
+   *    the cache's contents, not of the model's behaviour: it would stay green
+   *    across a model upgrade, a prompt change, and a provider incident alike,
+   *    which is precisely the regression the gate is supposed to catch.
    */
   attempt: number;
 };
@@ -224,6 +242,33 @@ export type Score = {
  * `score({ case, output })` reads unambiguously at every call site, and
  * adding a future field (a logger, a signal) does not break implementors.
  */
+/**
+ * One expectation key a scorer reads, and whether it can work without it.
+ *
+ * The `required` flag is what lets the runner tell "this check does not apply
+ * to this case" apart from "this case is misconfigured" — two situations that
+ * look identical from the outside and call for opposite responses.
+ *
+ *   - `required: true` — the scorer cannot run without the key. A case that
+ *     omits it causes the scorer to be SKIPPED for that case. Not a failure
+ *     and not a zero: a schema check against a case that specifies no schema
+ *     has no opinion, and recording 0.0 would drag down a suite aggregate with
+ *     a number that means nothing. Recording 1.0 would be worse.
+ *   - `required: false` — the key refines behaviour when present. The scorer
+ *     runs either way.
+ *
+ * Without the flag, a runner seeing `expect` with no `schema` key cannot know
+ * whether `matchesSchema` should be skipped or whether someone deleted a line
+ * by accident. With it, skipping is a declared, checkable outcome — and
+ * `validateExpectations` can then reject the one case that must never exist:
+ * a case where every scorer skips, which would run, cost money, and measure
+ * nothing.
+ */
+export type ExpectationClaim = {
+  key: string;
+  required: boolean;
+};
+
 export interface Scorer {
   /** Stable identifier. Becomes {@link Score.scorer} and a baseline column,
    *  so it carries the same stability obligation as {@link EvalCase.id}. */
@@ -247,9 +292,13 @@ export interface Scorer {
    * resolving by registration order.
    *
    * Non-authoritative annotations belong in {@link EvalCase.meta}, which no
-   * scorer claims and the check ignores.
+   * scorer claims — and which is rejected outright if it collides with a
+   * claimed key, since `meta.fields` is never anything but a mistake.
+   *
+   * See {@link ExpectationClaim} for why each claim carries a `required` flag
+   * rather than being a bare key.
    */
-  readonly claims: readonly string[];
+  readonly claims: readonly ExpectationClaim[];
   score(args: { case: EvalCase; output: SubjectOutput }): Promise<Score>;
 }
 
@@ -322,8 +371,55 @@ export type CaseResult = {
   scores: Score[];
   /** True only if every score passed. Derived, like {@link Score.passed}. */
   passed: boolean;
-  /** Weighted-mean-ready aggregate of this case's scores, 0..1. */
+  /**
+   * The case's aggregate score, 0..1 — the MEAN across all samples.
+   *
+   * With `samples === 1` this is just that one sample's aggregate. With more,
+   * it is their arithmetic mean, and {@link CaseResult.stdDev} describes how
+   * far they scattered.
+   */
   value: number;
+  /**
+   * How many times the case was run.
+   *
+   * WHY SAMPLING IS IN THE BASELINE CONTRACT FROM THE START
+   * ------------------------------------------------------
+   * The subject is stochastic. One run of one case is a single draw from a
+   * distribution, so `value` is an estimate with an error bar nobody measured.
+   * Everything the gate does downstream rests on that estimate:
+   *
+   *   - A fixed tolerance ("fail if a case drops more than 0.05") is a guess
+   *     about that error bar, applied uniformly to cases whose real variance
+   *     differs by an order of magnitude. Set it loose enough for the noisiest
+   *     case and it stops catching regressions on the stable ones; set it
+   *     tight and the noisy cases flap until someone disables the gate.
+   *   - Measured per-case variance replaces the guess with a derived number:
+   *     a drop is a regression when it is large relative to how much that
+   *     specific case moves on its own.
+   *
+   * And variance is a result in its own right, not just an error term. A case
+   * scoring 0.6 ± 0.35 is a different and more urgent problem than one
+   * scoring 0.6 ± 0.02 — the first is a coin flip in production. Averaging it
+   * to a single number hides exactly the instability worth acting on, which is
+   * why `stdDev` is recorded next to `value` rather than consumed and dropped.
+   *
+   * These fields are part of the contract now, before any baseline file
+   * exists, because adding them later would mean every recorded row predates
+   * them and no historical comparison could use them.
+   *
+   * Sampling logic is not implemented — this is the shape the runner fills in.
+   */
+  samples: number;
+  /**
+   * Population standard deviation of the per-sample aggregate values.
+   *
+   * Population rather than sample stddev: these are all the draws that were
+   * taken, and the number describes their spread rather than estimating a
+   * wider population's. Undefined when `samples === 1`, where spread is not a
+   * meaningful quantity — deliberately not 0, which would claim the case is
+   * perfectly stable when it has simply never been re-run.
+   */
+  stdDev?: number;
   /** Wall clock for the whole case, including scoring — which is why this is
    *  not simply {@link SubjectOutput.latencyMs}. */
   latencyMs: number;
