@@ -18,10 +18,7 @@
    export resolves to the module namespace rather than the class. */
 import { Ajv } from 'ajv';
 import type { ErrorObject, Schema } from 'ajv';
-import { extractStructured } from './extract.js';
-import type { EvalCase, Score, Scorer, SubjectOutput } from '../types.js';
-
-type ScoreArgs = { case: EvalCase; output: SubjectOutput };
+import type { EvalCase, Score, ScoreArgs, Scorer } from '../types.js';
 
 /* ------------------------------------------------------------------ *
  * exactFields
@@ -83,7 +80,7 @@ export function exactFields(options: ExactFieldsOptions = {}): Scorer {
     /* `async` with nothing awaited: the Scorer contract is async so that a
        deterministic scorer can be swapped for a judge without changing any
        call site. */
-    async score({ case: evalCase, output }: ScoreArgs): Promise<Score> {
+    async score({ case: evalCase, extraction }: ScoreArgs): Promise<Score> {
       const expected = readRecordExpectation(name, 'fields', evalCase);
 
       const fieldNames = Object.keys(expected);
@@ -107,8 +104,7 @@ export function exactFields(options: ExactFieldsOptions = {}): Scorer {
         );
       }
 
-      const extraction = extractStructured(output);
-      if ('error' in extraction) {
+      if (extraction.via === 'none') {
         return fail(name, `could not read structured output: ${extraction.error}`, {
           extraction: 'failed',
         });
@@ -174,10 +170,10 @@ export function exactFields(options: ExactFieldsOptions = {}): Scorer {
         reason:
           `${matched}/${fieldNames.length} fields matched` +
           (notes.length > 0 ? ` (${notes.join('; ')})` : ''),
-        /* `via` travels with every score derived from an extraction, so a
-           report can tell a genuine field error apart from one that only
-           happened because the payload had to be dug out of prose. */
-        meta: { via: extraction.via, expected: fieldNames.length, matched, fields, extraFields },
+        /* No `via` here: extraction happens once per case and is recorded on
+           CaseResult, so repeating it in every scorer's meta would store the
+           same fact three times and invite them to disagree. */
+        meta: { expected: fieldNames.length, matched, fields, extraFields },
       };
     },
   };
@@ -218,7 +214,7 @@ export function matchesSchema(options: NamedScorerOptions = {}): Scorer {
   return {
     name,
     claims: [{ key: 'schema', required: true }],
-    async score({ case: evalCase, output }: ScoreArgs): Promise<Score> {
+    async score({ case: evalCase, extraction }: ScoreArgs): Promise<Score> {
       const schema = readExpectation(name, 'schema', evalCase);
       if (!isRecord(schema) && typeof schema !== 'boolean') {
         throw new Error(
@@ -240,8 +236,7 @@ export function matchesSchema(options: NamedScorerOptions = {}): Scorer {
         );
       }
 
-      const extraction = extractStructured(output);
-      if ('error' in extraction) {
+      if (extraction.via === 'none') {
         return fail(name, `could not read structured output: ${extraction.error}`, {
           extraction: 'failed',
         });
@@ -254,7 +249,6 @@ export function matchesSchema(options: NamedScorerOptions = {}): Scorer {
           value: 1,
           passed: true,
           reason: 'output satisfies the schema',
-          meta: { via: extraction.via },
         };
       }
 
@@ -264,7 +258,7 @@ export function matchesSchema(options: NamedScorerOptions = {}): Scorer {
         value: 0,
         passed: false,
         reason: `output violates the schema: ${summariseAjvErrors(errors)}`,
-        meta: { via: extraction.via, errors },
+        meta: { errors },
       };
     },
   };

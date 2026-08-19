@@ -1,30 +1,12 @@
 /**
  * Getting structured data out of whatever the model actually produced.
  *
- * Every scorer that compares fields needs this, and every scorer needs it to
- * behave the same way, or two scorers will disagree about whether the same
- * response contained JSON at all.
+ * Called ONCE per case by the runner, never per scorer — see {@link Extraction}
+ * in types.ts for why. The types live there because `CaseResult` records the
+ * result; this module only computes it.
  */
 
-import type { SubjectOutput } from '../types.js';
-
-/**
- * How the payload had to be recovered, from most to least compliant.
- *
- *   - `tool-call`  — the model used the tool it was given.
- *   - `json`       — the whole response was JSON.
- *   - `fenced`     — the whole response was a single markdown code fence.
- *   - `scavenged`  — a fenced block had to be dug out of surrounding prose.
- */
-export type ExtractionRoute = 'tool-call' | 'json' | 'fenced' | 'scavenged';
-
-/**
- * Success carries the parsed value and the route it came by; failure carries a
- * sentence a human can read in a report. A discriminated union rather than
- * `data: unknown | null`, so `null` stays available as a legitimate extracted
- * value.
- */
-export type Extraction = { data: unknown; via: ExtractionRoute } | { error: string };
+import type { Extraction, SubjectOutput } from '../types.js';
 
 /**
  * Pulls the structured payload out of a subject's output.
@@ -37,22 +19,22 @@ export type Extraction = { data: unknown; via: ExtractionRoute } | { error: stri
  * ----------------------------------------------------
  * Extraction accuracy ("did the model read the email correctly?") and format
  * compliance ("did it emit clean JSON, or three paragraphs and a code block?")
- * are different properties of a response. A scorer that refuses to parse the
+ * are different properties of a response. A function that refuses to parse the
  * prose-wrapped case is not measuring extraction strictly — it is measuring
  * the two properties multiplied together, and reporting a number that cannot
  * distinguish a model that misread the email from one that read it perfectly
  * and said "Here you go:" first. Those call for completely different fixes.
  *
- * So this recovers the payload wherever it is, records HOW it had to be
- * recovered in `via`, and leaves format to `formatCompliance`, which scores
- * `via` directly. Two readable numbers instead of one muddled one.
+ * So this recovers the payload wherever it is, records HOW in `via`, and
+ * leaves format to `formatCompliance`, which scores `via` against the case's
+ * declared `expect.format`. Two readable numbers instead of one muddled one.
  *
- * The direction of this choice also matters for the baseline. Being lenient
- * now and measuring format separately is additive: existing recorded scores
- * stay valid and a new column appears next to them. Being strict now and
- * relaxing later would move every extraction score upward at once, which is
- * indistinguishable in the baseline from the model getting better — a silent
- * rewrite of history that the gate cannot flag.
+ * The direction of the choice also matters for the baseline. Being lenient now
+ * and measuring format separately is additive: recorded scores stay valid and
+ * a new column appears beside them. Being strict now and relaxing later would
+ * move every extraction score upward at once, which is indistinguishable in
+ * the baseline from the model improving — a silent rewrite of history the gate
+ * cannot flag.
  *
  * WHY THIS NEVER THROWS
  * ---------------------
@@ -61,16 +43,16 @@ export type Extraction = { data: unknown; via: ExtractionRoute } | { error: stri
  * regression the day it starts happening. Throwing would abort the case, and
  * a runner cannot tell "the model wrote an essay" apart from "the connection
  * dropped" — one is a quality signal to act on, the other is infrastructure
- * noise to retry. That distinction is most of what separates an eval harness
- * from a test runner, whose subject is entitled to be deterministic.
+ * noise to retry.
  */
 export function extractStructured(output: SubjectOutput): Extraction {
   const firstCall = output.toolCalls?.[0];
-  if (firstCall !== undefined) return { data: firstCall.input, via: 'tool-call' };
+  if (firstCall !== undefined) return { via: 'tool-call', data: firstCall.input };
 
   const text = output.text;
   if (text === undefined || text.trim() === '') {
     return {
+      via: 'none',
       error:
         output.toolCalls?.length === 0
           ? 'the subject returned an empty tool call list and no text'
@@ -79,20 +61,45 @@ export function extractStructured(output: SubjectOutput): Extraction {
   }
 
   const direct = tryParseJson(text);
-  if (direct !== undefined) return { data: direct.data, via: 'json' };
+  if (direct !== undefined) return { via: 'json', data: direct.data };
 
   const whole = stripWholeStringFence(text);
   if (whole !== undefined) {
     const parsed = tryParseJson(whole);
-    if (parsed !== undefined) return { data: parsed.data, via: 'fenced' };
+    if (parsed !== undefined) return { via: 'fenced', data: parsed.data };
   }
 
-  for (const block of fencedBlocks(text)) {
-    const parsed = tryParseJson(block);
-    if (parsed !== undefined) return { data: parsed.data, via: 'scavenged' };
+  /* AMBIGUITY IS NOT A CHOICE.
+     If the prose contains several fenced blocks that each parse as JSON, there
+     is no principled way to pick one. First-wins scores the model's scratch
+     work when it shows its reasoning before the answer; last-wins scores a
+     trailing example or a "here's what that looks like in context" block. Both
+     rules are arbitrary, and an arbitrary rule applied silently is the worst
+     option available: the suite would report a confident number derived from
+     a coin flip, and nobody would ever know which block it graded.
+
+     So this reports the ambiguity and lets the case fail visibly. The fix is
+     for the author to constrain the output format, not for the harness to
+     guess — and `fenceCount` tells them how many candidates there were. */
+  const parseable = [...fencedBlocks(text)]
+    .map((block) => tryParseJson(block))
+    .filter((parsed): parsed is { data: unknown } => parsed !== undefined);
+
+  if (parseable.length > 1) {
+    return {
+      via: 'none',
+      error:
+        `the response contains ${parseable.length} fenced blocks that each parse as ` +
+        `JSON, so which one is the answer is ambiguous; constrain the output format ` +
+        `or use a tool call`,
+      fenceCount: parseable.length,
+    };
   }
 
-  return { error: `expected JSON but no parseable JSON was found: ${snippet(text)}` };
+  const only = parseable[0];
+  if (only !== undefined) return { via: 'scavenged', data: only.data };
+
+  return { via: 'none', error: `expected JSON but no parseable JSON was found: ${snippet(text)}` };
 }
 
 /** A wrapper so a successful parse of the literal `null` stays distinguishable
@@ -110,9 +117,6 @@ function stripWholeStringFence(text: string): string | undefined {
   return /^\s*```[^\n]*\n([\s\S]*?)\n?\s*```\s*$/.exec(text)?.[1];
 }
 
-/** Every fenced block in the text, in order. The first one that parses wins:
- *  a model that emits several is usually showing its working before the
- *  answer, and later blocks are as often commentary as payload. */
 function* fencedBlocks(text: string): Generator<string> {
   const pattern = /```[^\n]*\n([\s\S]*?)```/g;
   for (const match of text.matchAll(pattern)) {

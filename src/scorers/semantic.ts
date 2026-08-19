@@ -5,112 +5,109 @@
  * --------------------------
  * A suite that needs a third-party API key to pass CI fails for reasons that
  * have nothing to do with the thing under test: an expired key, a rate limit,
- * a provider incident, a fork without secrets. Every one of those shows up as
- * a red build that is not a regression, and a gate that cries wolf gets
- * disabled — which costs you the gate entirely.
+ * a provider incident, a fork without secrets. Every one of those is a red
+ * build that is not a regression, and a gate that cries wolf gets disabled —
+ * which costs you the gate entirely.
  *
- * Embeddings are also the part of the pipeline where a local model is
- * genuinely good enough. A 22M-parameter sentence encoder runs in
- * milliseconds on CPU, needs no key, and after the first download needs no
- * network. The judge scorer will need an API; this does not, and paying for it
- * anyway would be spending both money and reliability for nothing.
+ * Embeddings are also where a local model is genuinely good enough: a
+ * 22M-parameter sentence encoder runs in milliseconds on CPU. The judge needs
+ * an API; this does not, and paying for it anyway would spend both money and
+ * reliability for nothing.
  */
 
-import { extractStructured } from './extract.js';
-import type { EvalCase, Score, Scorer, SubjectOutput } from '../types.js';
+import { ensureModelLock } from '../models-lock.js';
+import { uncalibrated } from '../uncalibrated.js';
+import type { LockedModel } from '../models-lock.js';
+import type { EvalCase, Score, ScoreArgs, Scorer } from '../types.js';
 
 /* ------------------------------------------------------------------ *
- * The embedding model is part of the baseline contract
+ * The embedder
  * ------------------------------------------------------------------ */
 
-/**
- * Exactly which model produced a number.
- *
- * A cosine similarity is only comparable to another cosine similarity from the
- * same encoder. Swap the model, the revision, or even the quantisation, and
- * every score in the suite shifts — uniformly, silently, and in a way that
- * looks exactly like the model under test getting worse. That is the single
- * most expensive kind of false positive an eval harness can produce: a whole
- * afternoon spent bisecting prompt changes to explain a regression caused by
- * `npm update`.
- *
- * So the identity is pinned in code, exposed here for the runner to record in
- * the run metadata, and never floats.
- *
- * TODO(baseline): the baseline file must carry this descriptor, and the gate
- * must refuse to compare a run against a baseline recorded with a different
- * one — reporting "baseline recorded with X, this run used Y; re-record or
- * pin" rather than a regression. Until that exists, changing any field here
- * silently invalidates every recorded semantic score.
- */
-export type EmbeddingModelDescriptor = {
+export type EmbeddingModelConfig = {
   /** Hugging Face repo id. */
-  readonly model: string;
-  /** Git revision within that repo. Never `main`: a branch is a moving target,
-   *  and the whole point is that this cannot move under us. */
-  readonly revision: string;
-  /** Quantisation. Changes the numbers, so it is part of the identity. */
+  readonly modelId: string;
+  /** Quantisation. Changes the numbers, so it is part of the model's identity
+   *  and is recorded in the lockfile alongside the revision. */
   readonly dtype: 'fp32' | 'fp16' | 'q8' | 'q4';
 };
 
 /**
- * Small, English, widely used, and cheap on CPU. `revision` is the commit that
- * was current when this was written, pinned deliberately rather than tracking
- * `main`.
+ * Small, English, widely used, cheap on CPU.
+ *
+ * No revision is hardcoded here on purpose. Inventing a commit hash would
+ * claim a pin the code never verified; instead the first run resolves the
+ * real one and writes `models.lock.json`, and every later run is checked
+ * against it. See src/models-lock.ts.
  */
-export const DEFAULT_EMBEDDING_MODEL: EmbeddingModelDescriptor = {
-  model: 'Xenova/all-MiniLM-L6-v2',
-  revision: 'e4ce9877abf3edfe10b0d82785e83bdcb973e22e',
+export const DEFAULT_EMBEDDING_MODEL: EmbeddingModelConfig = {
+  modelId: 'Xenova/all-MiniLM-L6-v2',
   dtype: 'fp32',
 };
 
 /**
- * The seam that keeps a 90 MB model download out of the unit tests.
+ * The seam that keeps a model download out of the unit tests.
  *
- * Everything interesting about this scorer — rescaling, the zero-vector guard,
- * max-over-expectations, extraction handling — is arithmetic on vectors, and
- * none of it needs a real encoder to test. Injecting the embedder means those
- * tests are deterministic, run in milliseconds, and cannot fail because a
- * mirror was slow. The one test that does exercise the real model is tagged so
- * CI can exclude it.
+ * Everything interesting about this scorer — the zero-vector guard,
+ * max-over-alternatives, projection — is arithmetic, and none of it needs a
+ * real encoder to test. Injecting the embedder makes those tests
+ * deterministic, fast, and immune to a slow mirror.
  */
 export interface Embedder {
-  /** Must return unit-comparable vectors of consistent length. */
   embed(texts: readonly string[]): Promise<readonly (readonly number[])[]>;
-  /** Recorded alongside the scores. See {@link EmbeddingModelDescriptor}. */
-  readonly descriptor: EmbeddingModelDescriptor;
+  /** The lockfile entry this embedder is running under, recorded on every
+   *  score so a number is never separated from the model that produced it. */
+  locked(): Promise<LockedModel>;
 }
+
+export type LocalEmbedderOptions = {
+  readonly config?: EmbeddingModelConfig;
+  readonly lockPath?: string;
+};
 
 /**
  * Lazily loads a transformers.js feature-extraction pipeline and caches it.
  *
- * The pipeline is created once per embedder instance, not once per case: model
- * initialisation dominates the cost of embedding by orders of magnitude, and
- * reloading it per case would make a 200-case suite unusable.
+ * Loaded once per embedder instance, not once per case: model initialisation
+ * dominates the cost of embedding by orders of magnitude.
  */
-export function localEmbedder(
-  descriptor: EmbeddingModelDescriptor = DEFAULT_EMBEDDING_MODEL,
-): Embedder {
-  /* Held as a promise rather than a resolved value so that concurrent cases
-     racing to be first all await the same load instead of starting several. */
+export function localEmbedder(options: LocalEmbedderOptions = {}): Embedder {
+  const config = options.config ?? DEFAULT_EMBEDDING_MODEL;
+
+  /* Held as promises rather than resolved values so concurrent cases racing to
+     be first all await the same load instead of starting several. */
+  let lockPromise: Promise<LockedModel> | undefined;
   let pipelinePromise: Promise<FeatureExtractionPipeline> | undefined;
 
+  const locked = (): Promise<LockedModel> => {
+    lockPromise ??= ensureModelLock({
+      slot: 'embedding',
+      modelId: config.modelId,
+      dtype: config.dtype,
+      ...(options.lockPath !== undefined && { lockPath: options.lockPath }),
+    });
+    return lockPromise;
+  };
+
   const load = async (): Promise<FeatureExtractionPipeline> => {
+    /* The lock is checked before the model is fetched, so a mismatch fails
+       fast instead of after a download. */
+    const entry = await locked();
     if (pipelinePromise === undefined) {
       /* Imported lazily so that merely importing this module does not pull in
-         the ONNX runtime — which matters for anyone using the deterministic
-         scorers and nothing else. */
+         the ONNX runtime — which matters for anyone using only the
+         deterministic scorers. */
       const { pipeline } = await import('@huggingface/transformers');
-      pipelinePromise = pipeline('feature-extraction', descriptor.model, {
-        revision: descriptor.revision,
-        dtype: descriptor.dtype,
+      pipelinePromise = pipeline('feature-extraction', config.modelId, {
+        dtype: config.dtype,
+        ...(entry.revision !== null && { revision: entry.revision }),
       }) as unknown as Promise<FeatureExtractionPipeline>;
     }
     return pipelinePromise;
   };
 
   return {
-    descriptor,
+    locked,
     async embed(texts) {
       const extractor = await load();
       /* Mean pooling and L2 normalisation are what all-MiniLM was trained
@@ -122,7 +119,7 @@ export function localEmbedder(
 }
 
 /** The slice of transformers.js this module uses, declared locally so the
- *  import above can stay dynamic and type-only elsewhere. */
+ *  import can stay dynamic. */
 type FeatureExtractionPipeline = (
   texts: string[],
   options: { pooling: 'mean'; normalize: boolean },
@@ -134,44 +131,23 @@ type FeatureExtractionPipeline = (
 
 export type SemanticSimilarityOptions = {
   readonly name?: string;
-  /** Defaults to {@link localEmbedder} with {@link DEFAULT_EMBEDDING_MODEL}. */
+  /** Defaults to {@link localEmbedder}. */
   readonly embedder?: Embedder;
   /**
-   * Raw cosine below this rescales to 0. See {@link rescale}.
+   * What to embed from the subject's output.
+   *
+   * `'text'` (the default) embeds the response text. Anything else is a dotted
+   * path into the extracted payload — `'fields.summary'` embeds that one
+   * field. Projection exists because embedding a whole JSON document and
+   * calling the result a similarity is measuring the wrong thing: the encoder
+   * spends its capacity on braces, quotes, and key names that are identical in
+   * every response, which compresses the range and makes two genuinely
+   * different answers look alike.
    */
-  readonly floor?: number;
-  /** Raw cosine at or above this rescales to 1. */
-  readonly ceiling?: number;
-  /** `passed` cutoff, applied to the rescaled value. */
+  readonly compare?: string;
+  /** `passed` cutoff on the raw cosine similarity. */
   readonly threshold?: number;
 };
-
-/**
- * Raw cosine similarity is a bad 0..1 score, and using it as one is the most
- * common mistake in embedding-based evals.
- *
- * Sentence encoders do not spread their output over [0, 1]. Two unrelated
- * English sentences typically land around 0.2–0.35 simply for being English
- * sentences; near-paraphrases land around 0.9–0.95; genuine 1.0 essentially
- * never happens. So a raw score of 0.3 reads as "30% right" when it means
- * "nothing in common", and the usable signal is squeezed into the top third of
- * the range where a threshold has to be set to three decimal places.
- *
- * Rescaling linearly from [floor, ceiling] to [0, 1] and clamping fixes the
- * readability problem, at the cost of two numbers that are assumptions rather
- * than facts.
- *
- * THESE DEFAULTS ARE A STARTING POINT, NOT A TRUTH. They are reasonable for
- * all-MiniLM-L6-v2 on short English text and wrong for anything else — a
- * different encoder, a different language, or long documents all move the
- * distribution. Calibrate them against your own data: embed a set of pairs you
- * consider clearly unrelated and a set you consider clearly equivalent, and
- * put the floor and ceiling where those two distributions actually sit. Until
- * you do, treat the absolute numbers as arbitrary and only the direction of
- * change as meaningful.
- */
-export const DEFAULT_SIMILARITY_FLOOR = 0.3;
-export const DEFAULT_SIMILARITY_CEILING = 0.95;
 
 /**
  * Scores the subject's text against `expect.similar` — a string, or a list of
@@ -182,37 +158,55 @@ export const DEFAULT_SIMILARITY_CEILING = 0.95;
  * payment"), and matching any one of them perfectly is a perfect answer.
  * Averaging would punish a correct response for being unlike the alternatives
  * it correctly did not give.
+ *
+ * THE VALUE IS RAW COSINE SIMILARITY, NOT A RESCALED SCORE
+ * --------------------------------------------------------
+ * An earlier version mapped [0.3, 0.95] onto [0, 1] to make the number "read
+ * better", on the argument that unrelated English sentences cluster around 0.3
+ * and paraphrases around 0.95. That argument is true and the fix was still
+ * wrong: the floor and the ceiling were both invented, they were stacked on
+ * top of an invented threshold, and the product was a number that looked
+ * calibrated while encoding three guesses. Worse, it was not comparable to any
+ * published similarity figure, so nobody could sanity-check it against
+ * anything.
+ *
+ * Raw cosine is harder to read and honest about what it is. If the range is
+ * inconvenient — and it is — the answer is to calibrate a threshold against
+ * labelled data, the way `src/calibrate.ts` does for the judge, not to squash
+ * the axis until the numbers look friendly.
  */
 export function semanticSimilarity(options: SemanticSimilarityOptions = {}): Scorer {
   const name = options.name ?? 'semantic-similarity';
   const embedder = options.embedder ?? localEmbedder();
-  const floor = options.floor ?? DEFAULT_SIMILARITY_FLOOR;
-  const ceiling = options.ceiling ?? DEFAULT_SIMILARITY_CEILING;
-  const threshold = options.threshold ?? 0.8;
-
-  if (!(ceiling > floor)) {
-    throw new Error(
-      `Scorer "${name}": ceiling (${ceiling}) must be greater than floor (${floor})`,
+  const compare = options.compare ?? 'text';
+  const threshold =
+    options.threshold ??
+    uncalibrated(
+      0.8,
+      'semantic-similarity-threshold',
+      'raw cosine above which a response counts as matching; a guess, since the ' +
+        'right cutoff depends on the encoder and the domain. Calibrate it the way ' +
+        'src/calibrate.ts calibrates the judge, against labelled pairs.',
     );
-  }
 
   return {
     name,
     claims: [{ key: 'similar', required: true }],
-    async score({ case: evalCase, output }: { case: EvalCase; output: SubjectOutput }): Promise<Score> {
+    async score({ case: evalCase, output, extraction }: ScoreArgs): Promise<Score> {
       const expectations = readSimilarExpectation(name, evalCase);
-      const actual = subjectText(output);
+      const actual = selectText({ scorerName: name, compare, output, extraction, evalCase });
 
-      if (actual === undefined || actual.trim() === '') {
-        /* A response with no text cannot be embedded — the vector would be
-           degenerate and the similarity meaningless. Scored, not thrown: an
-           empty response is a model failure and belongs in the baseline. */
+      if (actual.trim() === '') {
+        /* An empty string cannot be embedded meaningfully — the vector is
+           degenerate and every similarity against it is noise. Scored rather
+           than thrown: an empty response is a model failure and belongs in the
+           baseline. */
         return {
           scorer: name,
           value: 0,
           passed: false,
-          reason: 'the subject produced no text to compare',
-          meta: { model: embedder.descriptor },
+          reason: `nothing to compare: \`${compare}\` was empty`,
+          meta: { compare, model: await embedder.locked() },
         };
       }
 
@@ -226,34 +220,83 @@ export function semanticSimilarity(options: SemanticSimilarityOptions = {}): Sco
         const vector = vectors[index + 1];
         return {
           expectation,
-          raw: vector === undefined ? 0 : cosineSimilarity(actualVector, vector),
+          similarity: vector === undefined ? 0 : cosineSimilarity(actualVector, vector),
         };
       });
 
-      /* `reduce` rather than `Math.max(...)`: an expectation list is
-         author-controlled and spreading a large one would risk a stack
-         overflow for no benefit. */
-      const best = similarities.reduce((a, b) => (b.raw > a.raw ? b : a));
-      const value = rescale(best.raw, floor, ceiling);
+      /* `reduce` rather than `Math.max(...)`: the expectation list is
+         author-controlled and spreading a large one risks a stack overflow. */
+      const best = similarities.reduce((a, b) => (b.similarity > a.similarity ? b : a));
 
       return {
         scorer: name,
-        value,
-        passed: value >= threshold,
+        value: best.similarity,
+        passed: best.similarity >= threshold,
         reason:
-          `closest expectation scored ${best.raw.toFixed(3)} raw cosine ` +
-          `(rescaled ${value.toFixed(3)} from floor ${floor}/ceiling ${ceiling}): ` +
+          `cosine similarity ${best.similarity.toFixed(3)} against the closest of ` +
+          `${expectations.length} expectation${expectations.length === 1 ? '' : 's'}: ` +
           `"${truncate(best.expectation)}"`,
-        meta: {
-          model: embedder.descriptor,
-          floor,
-          ceiling,
-          rawMax: best.raw,
-          similarities: similarities.map((s) => ({ expectation: s.expectation, raw: s.raw })),
-        },
+        meta: { compare, model: await embedder.locked(), threshold, similarities },
       };
     },
   };
+}
+
+/**
+ * Chooses the text to embed.
+ *
+ * THROWS rather than falling back when `compare` is `'text'` and there is no
+ * text. The tempting fallback is to `JSON.stringify` the extracted payload and
+ * embed that — and it is exactly the failure this repo exists to prevent. The
+ * resulting number is a similarity between a JSON document and an English
+ * sentence, dominated by punctuation and key names, and it is reported in the
+ * same column, on the same scale, as a real one. It would look correct and
+ * mean nothing.
+ *
+ * A tool-calling subject is a legitimate thing to score semantically — with
+ * `compare: 'fields.summary'`, which names the field to embed. That is a
+ * decision for the author, not a default for the harness.
+ */
+function selectText(args: {
+  scorerName: string;
+  compare: string;
+  output: ScoreArgs['output'];
+  extraction: ScoreArgs['extraction'];
+  evalCase: EvalCase;
+}): string {
+  const { scorerName, compare, output, extraction, evalCase } = args;
+
+  if (compare === 'text') {
+    if (output.text !== undefined) return output.text;
+    throw new Error(
+      `Scorer "${scorerName}": case "${evalCase.id}" produced no text, and \`compare\` ` +
+        `is "text". Set \`compare\` to a path into the extracted payload (for example ` +
+        `"fields.summary") to name the field to embed. Embedding the serialised JSON ` +
+        `instead would report a similarity between a document and a sentence on the ` +
+        `same scale as a real one.`,
+    );
+  }
+
+  if (extraction.via === 'none') {
+    throw new Error(
+      `Scorer "${scorerName}": case "${evalCase.id}" declares \`compare: "${compare}"\`, ` +
+        `but no structured payload could be read (${extraction.error})`,
+    );
+  }
+
+  const value = readPath(extraction.data, compare);
+  if (typeof value === 'string') return value;
+  throw new Error(
+    `Scorer "${scorerName}": case "${evalCase.id}" has \`compare: "${compare}"\`, which ` +
+      `resolved to ${value === undefined ? 'nothing' : typeof value}; expected a string`,
+  );
+}
+
+function readPath(data: unknown, path: string): unknown {
+  return path.split('.').reduce<unknown>((value, segment) => {
+    if (typeof value !== 'object' || value === null) return undefined;
+    return (value as Record<string, unknown>)[segment];
+  }, data);
 }
 
 /**
@@ -261,15 +304,14 @@ export function semanticSimilarity(options: SemanticSimilarityOptions = {}): Sco
  * to the caller.
  *
  * A vector of all zeros has norm 0, so the similarity is 0/0 — NaN. It happens
- * for real: an encoder handed an empty or whitespace-only string, a truncation
- * that leaves nothing, a tokeniser that drops every token as a special. The
- * text guard above catches the common path, but a scorer that relies on its
- * caller to catch its own division by zero is not finished — and `invokeScorer`
- * rejecting the NaN downstream would report "this scorer is broken" rather
- * than "this response was empty", which is a materially worse error to debug.
+ * for real: an encoder handed a whitespace-only string, a truncation that
+ * leaves nothing, a tokeniser that drops every token as a special. A scorer
+ * that relies on its caller to catch its own division by zero is not finished,
+ * and `invokeScorer` rejecting the NaN downstream would report "this scorer is
+ * broken" rather than "this response was empty".
  *
  * Returning 0 is correct rather than merely safe: a zero vector shares no
- * direction with anything, so "no similarity" is the honest answer.
+ * direction with anything.
  */
 export function cosineSimilarity(a: readonly number[], b: readonly number[]): number {
   if (a.length !== b.length) {
@@ -289,23 +331,6 @@ export function cosineSimilarity(a: readonly number[], b: readonly number[]): nu
 
   if (normA === 0 || normB === 0) return 0;
   return dot / (Math.sqrt(normA) * Math.sqrt(normB));
-}
-
-/** Linear map from [floor, ceiling] onto [0, 1], clamped at both ends. */
-export function rescale(raw: number, floor: number, ceiling: number): number {
-  const scaled = (raw - floor) / (ceiling - floor);
-  return Math.min(1, Math.max(0, scaled));
-}
-
-/** Where the text to compare comes from: the response text if there is one,
- *  otherwise the extracted payload rendered back to JSON — so a subject that
- *  answers through a tool call is still comparable. */
-function subjectText(output: SubjectOutput): string | undefined {
-  if (output.text !== undefined && output.text.trim() !== '') return output.text;
-
-  const extraction = extractStructured(output);
-  if ('error' in extraction) return undefined;
-  return typeof extraction.data === 'string' ? extraction.data : JSON.stringify(extraction.data);
 }
 
 function readSimilarExpectation(scorerName: string, evalCase: EvalCase): string[] {

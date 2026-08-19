@@ -45,7 +45,7 @@ describe('extractStructured', () => {
     expect(result).toEqual({ data: { intent: 'refund' }, via: 'scavenged' });
   });
 
-  it('takes the first fenced block that parses', () => {
+  it('scavenges when exactly one fenced block parses, ignoring the rest', () => {
     const result = extractStructured(
       subjectOutput({
         text: 'Working:\n```\nnot json\n```\nAnswer:\n```json\n{"ok":true}\n```',
@@ -55,20 +55,37 @@ describe('extractStructured', () => {
     expect(result).toEqual({ data: { ok: true }, via: 'scavenged' });
   });
 
+  it('refuses to guess when several fenced blocks parse as JSON', () => {
+    const result = extractStructured(
+      subjectOutput({
+        text: 'First attempt:\n```json\n{"n":1}\n```\nActually:\n```json\n{"n":2}\n```',
+      }),
+    );
+
+    /* First-wins scores the scratch work, last-wins scores a trailing
+       example. Both rules are arbitrary, and an arbitrary rule applied
+       silently produces a confident number derived from a coin flip. */
+    expect(result).toEqual({
+      via: 'none',
+      error: expect.stringContaining('ambiguous'),
+      fenceCount: 2,
+    });
+  });
+
   it('describes an error instead of throwing when the model returned only prose', () => {
     const result = extractStructured(
       subjectOutput({ text: 'Sure! The customer is asking for a refund on order 48812.' }),
     );
 
     /* A prose response is a scoring result, not a crash. */
-    expect(result).toEqual({ error: expect.stringContaining('no parseable JSON') });
+    expect(result).toEqual({ via: 'none', error: expect.stringContaining('no parseable JSON') });
     expect('error' in result && result.error).toContain('Sure!');
   });
 
   it('reports an empty response', () => {
     const result = extractStructured(subjectOutput({}));
 
-    expect(result).toEqual({ error: expect.stringContaining('no text') });
+    expect(result).toEqual({ via: 'none', error: expect.stringContaining('no text') });
   });
 
   it('treats a literal JSON null as data, not as absence', () => {

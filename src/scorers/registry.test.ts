@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ExpectationError, applicableScorers, validateExpectations } from './registry.js';
 import { callsTool, exactFields, matchesSchema } from './exact.js';
-import { formatCompliance } from './format.js';
 import { evalCase } from '../testing.js';
 import type { ExpectationClaim, Score, Scorer } from '../types.js';
 
@@ -41,10 +40,10 @@ describe('applicableScorers', () => {
 
   it('runs a scorer with only optional claims against any case', () => {
     const applicable = applicableScorers(evalCase({ expect: { fields: { a: 1 } } }), [
-      formatCompliance(),
+      stubScorer('advisory', [optional('hint')]),
     ]);
 
-    expect(applicable.map((s) => s.name)).toEqual(['format-compliance']);
+    expect(applicable.map((s) => s.name)).toEqual(['advisory']);
   });
 });
 
@@ -118,11 +117,14 @@ describe('validateExpectations', () => {
   });
 
   it('does not count a scorer that applies but reads none of the case keys', () => {
-    /* formatCompliance has no required claims, so it applies everywhere. If
-       that counted as measurement it would silently disable this guard for
-       every suite that registers it. */
+    /* A scorer with no required claims applies everywhere. If that counted as
+       measurement it would silently disable this guard for every suite that
+       registers one. */
     const problems = problemsFrom(() =>
-      validateExpectations([evalCase({ id: 'thin-01', expect: {} })], [formatCompliance()]),
+      validateExpectations(
+        [evalCase({ id: 'thin-01', expect: {} })],
+        [stubScorer('advisory', [optional('hint')])],
+      ),
     );
 
     expect(problems[0]).toContain('is measured by no scorer');
@@ -131,7 +133,10 @@ describe('validateExpectations', () => {
 
   it('accepts a case measured only by an optional-claim scorer that it opts into', () => {
     expect(() =>
-      validateExpectations([evalCase({ expect: { format: 'json' } })], [formatCompliance()]),
+      validateExpectations(
+        [evalCase({ expect: { hint: 'be terse' } })],
+        [stubScorer('advisory', [optional('hint')])],
+      ),
     ).not.toThrow();
   });
 
@@ -175,15 +180,17 @@ describe('validateExpectations', () => {
     ).not.toThrow();
   });
 
-  it('rejects two scorers claiming the same key', () => {
-    const problems = problemsFrom(() =>
-      validateExpectations([], [exactFields(), stubScorer('other-fields', [required('fields')])]),
-    );
-
-    expect(problems).toHaveLength(1);
-    expect(problems[0]).toContain('"fields"');
-    expect(problems[0]).toContain('exact-fields');
-    expect(problems[0]).toContain('other-fields');
+  it('allows two scorers to claim the same key', () => {
+    /* Nothing dispatches by key: the runner runs every applicable scorer and
+       each writes its own column, so two scorers reading `fields` is not
+       ambiguous. An earlier version rejected this, importing an intuition from
+       static analysis where a rule really does own its identifier. ADR 003. */
+    expect(() =>
+      validateExpectations(
+        [evalCase({ id: 'a', expect: { fields: { x: 1 } } })],
+        [exactFields(), exactFields({ name: 'exact-fields-lenient' })],
+      ),
+    ).not.toThrow();
   });
 
   it('rejects a duplicate scorer name and points at the `name` option', () => {
@@ -196,19 +203,17 @@ describe('validateExpectations', () => {
     expect(problems[0]).toContain('`name` option');
   });
 
-  it('still rejects two instances of one factory even when named apart', () => {
-    /* DOCUMENTS A CONFLICT, not an endorsement. The `name` override exists so
-       a suite can register `exactFields` twice with different normalisers —
-       but both instances claim `fields`, and the one-owner-per-key rule
-       rejects that regardless of their names. So the override currently only
-       helps scorers that read different keys, which is not the case it was
-       added for. See the note in registry.ts on what would have to change. */
+  it('records both configurations of one factory under distinct names', async () => {
+    const strict = exactFields();
+    const lenient = exactFields({ name: 'exact-fields-lenient' });
+
+    /* The `name` override and shared keys are what make this work: two
+       measurements of the same expectation, two baseline columns. */
     expect(() =>
-      validateExpectations(
-        [evalCase({ expect: { fields: { a: 1 } } })],
-        [exactFields(), exactFields({ name: 'exact-fields-lenient' })],
-      ),
-    ).toThrow(/claimed by both/);
+      validateExpectations([evalCase({ expect: { fields: { a: 1 } } })], [strict, lenient]),
+    ).not.toThrow();
+    expect([strict.name, lenient.name]).toEqual(['exact-fields', 'exact-fields-lenient']);
+    await Promise.resolve();
   });
 
   it('accepts differently-named scorers that read different keys', () => {
@@ -231,7 +236,6 @@ describe('validateExpectations', () => {
       ),
     );
 
-    expect(problems[0]).toContain('claimed by both');
     expect(problems.some((p) => p.includes('case "a" is measured by no scorer'))).toBe(true);
     expect(problems.some((p) => p.includes('case "b" is measured by no scorer'))).toBe(true);
     expect(problems.some((p) => p.includes('unclaimed key "field"'))).toBe(true);

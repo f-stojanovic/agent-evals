@@ -78,39 +78,132 @@ that is not a regression, and a gate that cries wolf gets switched off — which
 costs you the gate entirely.
 
 Embeddings are also where a local model is genuinely good enough: a
-22M-parameter encoder runs in milliseconds on CPU. The judge scorer will need an
-API; this does not, and paying for it anyway would spend both money and
-reliability for nothing.
+22M-parameter encoder runs in milliseconds on CPU. The judge needs an API; this
+does not, and paying for it anyway would spend both money and reliability for
+nothing.
 
-The model id, git revision, and quantisation are pinned in code and recorded on
-every score. They have to be — a cosine similarity is only comparable to another
-from the same encoder, so an unnoticed model upgrade shifts every score in the
-suite at once, which is indistinguishable from the model under test getting
-worse.
+The model id, revision, and quantisation are pinned in a committed
+`models.lock.json`, written on the first run and checked on every later one. A
+mismatch fails the run. It has to — a cosine similarity is only comparable to
+another from the same encoder, so an unnoticed model upgrade shifts every score
+in the suite at once, which is indistinguishable from the subject getting
+worse. The lockfile turns that into a reviewable diff. See
+[ADR 005](docs/decisions/005-models-are-pinned.md).
+
+The scorer emits **raw cosine similarity**, not a rescaled score. Real
+sentence-embedding similarities do cluster in a narrow band, which makes raw
+values awkward to read — but the earlier fix, mapping an invented [0.3, 0.95]
+band onto [0, 1], stacked two guesses on top of a third and produced a number
+that looked calibrated and matched no published figure. The answer to an
+awkward range is to calibrate a threshold against labelled data, not to squash
+the axis until the numbers look friendly.
+
+## Judging the judge
+
+`llmJudge` grades a case against a prose rubric by asking a different model —
+the only scorer that can assess "is this a good answer to an ambiguous
+question". It is also the only scorer that is itself a probabilistic system
+with unknown accuracy, and adopting one without measuring it does not remove
+the unmeasured part of your pipeline. It moves it one level down and attaches a
+number to it, which is worse, because now there is a figure in the baseline
+that looks like a measurement.
+
+So `evals/calibration/` holds cases with human-assigned scores, spanning the
+range from clearly-right through genuinely-borderline to clearly-wrong, each
+paired with a frozen model output. `npm run calibrate` runs the judge against
+those same outputs and reports how far it lands from the human labels:
+
+```
+  case                        human  judge  error  spread
+  --------------------------  -----  -----  -----  ------
+  cal-clear-correct-01         1.00   0.95  -0.05    0.05
+  cal-hallucinated-name-01     0.50   0.85  +0.35    0.10
+  ...
+  mean absolute error : 0.121
+  mean signed error   : +0.086
+```
+
+The two error figures answer different questions. A judge that is uniformly too
+generous is miscalibrated and fixable by moving a threshold; one that is off in
+both directions is noisy and is not. A judge with an MAE of 0.08 is a usable
+instrument; one at 0.35 is a random number generator with good manners, and no
+amount of prompt engineering elsewhere fixes that. You cannot know which you
+have without running it.
+
+Three further details matter enough to state:
+
+- **The judge returns structured output through a forced tool call**, never
+  prose to be parsed. A grade regexed out of a paragraph is a parser bug
+  waiting to become a silent scoring bug.
+- **The rubric goes in the system prompt; the output under evaluation goes in a
+  delimited user turn.** This is a security boundary. In a real suite the output
+  derives from customer emails and scraped pages, and interpolating it into the
+  system prompt puts attacker-influenced text in the position of highest
+  authority — a path from your own test data to a green build.
+- **The judge runs k times and the median is taken**, with the spread recorded.
+  Median rather than mean because one wild verdict should not move the score by
+  a quarter of the range. And the spread is kept because a judge that disagrees
+  with itself is reporting that the case is genuinely ambiguous — that is a
+  finding, not noise to be averaged away.
+
+## Counting the assumptions
+
+A harness like this fills up with numbers that look like findings and are
+guesses: a pass threshold, a disagreement cutoff, a sample count. Each is
+defensible alone; stacked, they produce a score that reads as authoritative and
+is not.
+
+Every such constant is declared through `uncalibrated(value, id, note)`, which
+returns it unchanged and registers it. Reports end with a count and a list. The
+assumptions do not go away — a harness needs defaults — but they are counted
+rather than absorbed.
+
+The same instinct removed things in the last revision: the semantic scorer used
+to rescale raw cosine similarity from an invented [0.3, 0.95] band onto [0, 1],
+and `formatCompliance` used to award 0.5 for a markdown fence. Both numbers
+were made up, and both made the output look calibrated. They are gone; the
+semantic scorer emits raw cosine, and format compliance is graded against a
+format the case author declares.
 
 ## Status
 
 - [x] Domain types — the stable contract (`src/types.ts`), including per-case
-      sampling (`samples`, `stdDev`) so baseline tolerances can be derived from
-      measured variance rather than guessed
+      sampling (`samples`, `stdDev`, `sampleValues`)
 - [x] YAML case loader with actionable errors and stable ordering
 - [x] Both wiring guards: unclaimed keys, and cases nothing measures
 - [x] Score contract enforcement (`invokeScorer`)
-- [x] Structured-output extraction, with the route recorded (`via`)
+- [x] Structured-output extraction, once per case, with the route recorded
 - [x] Deterministic scorers: `exactFields`, `matchesSchema`, `callsTool`
-- [x] `formatCompliance` — output-format discipline, scored separately from
-      extraction accuracy so neither hides the other
-- [x] Semantic scorer — local embeddings, pinned model, calibratable rescale
-- [ ] LLM-judge scorer
+- [x] `formatCompliance` — format discipline, graded against a declared format
+- [x] Semantic scorer — local embeddings, raw cosine, lockfile-pinned model
+- [x] LLM judge — forced tool call, self-consistency, injection-safe prompt
+- [x] Judge calibration against human labels (`npm run calibrate`)
+- [x] `models.lock.json` — model changes are explicit and reviewable
+- [x] Uncalibrated-constant tracking
 - [ ] Runner — concurrency, retries, timeouts, sampling, cost accounting
 - [ ] Baseline file format and the CI gate
 - [ ] Reporters (terminal, JSON, GitHub annotations)
+
+Design decisions and their reasoning — including one that was wrong and was
+reversed — are recorded in [`docs/decisions/`](docs/decisions/).
 
 ## Development
 
 ```bash
 npm install
 npm run typecheck
-npm test                     # unit tests only; no model download
-RUN_MODEL_TESTS=1 npm test   # adds the one real-embedding integration test
+npm test                     # unit tests only; no network, no model download
+RUN_MODEL_TESTS=1 npm test   # adds the real-embedding integration test
+npm run calibrate            # measures the judge; needs ANTHROPIC_API_KEY in .env
 ```
+
+Judge calls read the API key from the project `.env` (see `.env.example`),
+explicitly and by path — never from the ambient environment. A run should not
+be able to silently bill a key nobody meant to use.
+
+### A note on dependencies
+
+`@huggingface/transformers` pulls two transitively vulnerable packages
+(`adm-zip`, `sharp`), both with no fix currently available upstream. Neither is
+on a path this project exercises — it embeds text, never decodes images, and
+unpacks only the ONNX runtime — but they will appear in any `npm audit`.

@@ -135,6 +135,46 @@ export type Subject = (input: unknown, ctx: SubjectContext) => Promise<SubjectOu
 export const DEFAULT_CASE_WEIGHT = 1;
 
 /**
+ * How the structured payload was recovered, most to least compliant.
+ *
+ *   - `tool-call`  — the model used the tool it was given.
+ *   - `json`       — the whole response was JSON.
+ *   - `fenced`     — the whole response was a single markdown code fence.
+ *   - `scavenged`  — one fenced block had to be dug out of surrounding prose.
+ */
+export type ExtractionRoute = 'tool-call' | 'json' | 'fenced' | 'scavenged';
+
+/**
+ * The result of reading structured data out of a response — computed ONCE per
+ * case by the runner, then handed to every scorer.
+ *
+ * It is not a per-scorer concern. Three scorers each re-parsing the same
+ * response would store the same `via` three times, cost three parses, and
+ * leave open the possibility of two scorers disagreeing about what the model
+ * produced. One extraction, one answer, recorded on {@link CaseResult}.
+ *
+ * `via: 'none'` is the failure arm and carries a human-readable reason.
+ */
+export type Extraction =
+  | { via: ExtractionRoute; data: unknown }
+  | {
+      via: 'none';
+      error: string;
+      /** How many fenced blocks parsed as JSON. Present when extraction failed
+       *  because more than one did — see the ambiguity note in extract.ts. */
+      fenceCount?: number;
+    };
+
+/** What a scorer is handed. A named object so adding a field later does not
+ *  break every implementor. */
+export type ScoreArgs = {
+  case: EvalCase;
+  output: SubjectOutput;
+  /** Shared, already computed. Scorers that do not need it ignore it. */
+  extraction: Extraction;
+};
+
+/**
  * One test case, authored by a human in YAML.
  *
  * WHY `id` MUST BE STABLE
@@ -299,7 +339,7 @@ export interface Scorer {
    * rather than being a bare key.
    */
   readonly claims: readonly ExpectationClaim[];
-  score(args: { case: EvalCase; output: SubjectOutput }): Promise<Score>;
+  score(args: ScoreArgs): Promise<Score>;
 }
 
 /**
@@ -362,6 +402,9 @@ export type SuiteTotals = {
  */
 export type CaseResult = {
   caseId: string;
+  /** Computed once by the runner and shared with every scorer. See
+   *  {@link Extraction}. */
+  extraction: Extraction;
   /** Weight actually applied, resolved from the case. Recorded rather than
    *  recomputed so a historical result stays interpretable after the case's
    *  weight is edited. */
@@ -420,6 +463,22 @@ export type CaseResult = {
    * perfectly stable when it has simply never been re-run.
    */
   stdDev?: number;
+  /**
+   * Every per-sample aggregate value, in the order they were drawn.
+   *
+   * IN MEMORY AND IN `.artifacts/` ONLY — NEVER IN THE BASELINE. The baseline
+   * carries `value`, `stdDev`, and `samples`, and nothing more.
+   *
+   * The rule is the same one that governs {@link SubjectOutput.raw}: keep
+   * everything for re-analysis, persist only what a human can review in a
+   * diff. Five raw numbers per case per run would make the baseline diff
+   * unreadable and unreviewable, and reviewability is the entire mechanism —
+   * a baseline nobody reads is a rubber stamp. Meanwhile the samples are worth
+   * keeping in the run artifacts: a bimodal case (three runs at 1.0, two at
+   * 0.0) and a genuinely middling one (five runs near 0.6) have the same mean
+   * and similar stddev, and only the raw draws tell them apart.
+   */
+  sampleValues: number[];
   /** Wall clock for the whole case, including scoring — which is why this is
    *  not simply {@link SubjectOutput.latencyMs}. */
   latencyMs: number;

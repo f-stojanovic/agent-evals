@@ -3,9 +3,7 @@
  *
  * Everything re-exported here is API: it is what a consumer imports, what
  * semver applies to, and what cannot be changed without a reason. Anything not
- * listed is internal and may move — `src/errors.ts` exposes
- * {@link ProblemListError} only because the two error classes below extend it
- * and a caller may want to catch either.
+ * listed is internal and may move.
  */
 
 export type {
@@ -17,7 +15,10 @@ export type {
   EvalCase,
   Score,
   Scorer,
+  ScoreArgs,
   ExpectationClaim,
+  Extraction,
+  ExtractionRoute,
   CostBreakdown,
   LatencyAggregate,
   SuiteTotals,
@@ -36,9 +37,14 @@ export type { Applicability } from './scorers/registry.js';
 export { invokeScorer, InvalidScoreError } from './scorers/invoke.js';
 
 export { extractStructured } from './scorers/extract.js';
-export type { Extraction, ExtractionRoute } from './scorers/extract.js';
 
-export { exactFields, matchesSchema, callsTool, trimStrings, lowercaseStrings } from './scorers/exact.js';
+export {
+  exactFields,
+  matchesSchema,
+  callsTool,
+  trimStrings,
+  lowercaseStrings,
+} from './scorers/exact.js';
 export type {
   ExactFieldsOptions,
   CallsToolOptions,
@@ -46,23 +52,60 @@ export type {
   FieldNormalizer,
 } from './scorers/exact.js';
 
-export { formatCompliance } from './scorers/format.js';
-export type { FormatComplianceOptions } from './scorers/format.js';
+export { formatCompliance, FORMAT_EXPECTATIONS } from './scorers/format.js';
+export type { FormatComplianceOptions, FormatExpectation } from './scorers/format.js';
 
 export {
   semanticSimilarity,
   localEmbedder,
   cosineSimilarity,
-  rescale,
   DEFAULT_EMBEDDING_MODEL,
-  DEFAULT_SIMILARITY_FLOOR,
-  DEFAULT_SIMILARITY_CEILING,
 } from './scorers/semantic.js';
 export type {
   Embedder,
-  EmbeddingModelDescriptor,
+  EmbeddingModelConfig,
+  LocalEmbedderOptions,
   SemanticSimilarityOptions,
 } from './scorers/semantic.js';
 
+export {
+  llmJudge,
+  anthropicJudge,
+  median,
+  parseVerdict,
+  JudgeProtocolError,
+  DEFAULT_JUDGE_MODEL,
+} from './scorers/judge.js';
+export type {
+  JudgeClient,
+  JudgeVerdict,
+  JudgeResponse,
+  LlmJudgeOptions,
+  AnthropicJudgeOptions,
+} from './scorers/judge.js';
+
+export {
+  calibrate,
+  loadCalibrationCases,
+  formatCalibrationReport,
+} from './calibrate.js';
+export type { CalibrationCase, CalibrationResult, CalibrationReport } from './calibrate.js';
+
+export {
+  ensureModelLock,
+  huggingFaceRevision,
+  ModelLockError,
+  MODELS_LOCK_PATH,
+} from './models-lock.js';
+export type { ModelsLock, LockedModel, RevisionResolver } from './models-lock.js';
+
+export {
+  uncalibrated,
+  uncalibratedConstants,
+  formatUncalibratedReport,
+  resetUncalibratedRegistry,
+} from './uncalibrated.js';
+export type { UncalibratedConstant } from './uncalibrated.js';
+
 /* Fixture builders are API, not test scaffolding. See src/testing.ts. */
-export { subjectOutput, evalCase, subjectContext } from './testing.js';
+export { subjectOutput, evalCase, subjectContext, scoreArgs } from './testing.js';

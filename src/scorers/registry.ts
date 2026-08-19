@@ -9,8 +9,8 @@
 import { ProblemListError } from '../errors.js';
 import type { EvalCase, ExpectationClaim, Scorer } from '../types.js';
 
-/** Scorers and cases disagree about who owns which expectation key, or a case
- *  ends up measured by nothing at all. */
+/** A case carries an expectation nothing reads, a case is measured by nothing,
+ *  a `meta` key shadows a claimed one, or two scorers share a name. */
 export class ExpectationError extends ProblemListError {
   override readonly name = 'ExpectationError';
 
@@ -113,35 +113,21 @@ export function validateExpectations(cases: readonly EvalCase[], scorers: readon
     }
     seenNames.add(scorer.name);
 
-    /* UNRESOLVED TENSION, flagged rather than papered over.
-       One key, one owner. That rule and the `name` override on the scorer
-       factories pull against each other: the override exists so a suite can
-       register `exactFields` twice — strict on one set of fields, whitespace-
-       tolerant on another — and both instances necessarily claim `fields`, so
-       this rejects them however they are named.
+    /* SHARED KEYS ARE FINE. An earlier version of this file rejected two
+       scorers claiming the same key as "ambiguous ownership". That was wrong:
+       nothing dispatches by key. The runner runs every applicable scorer and
+       each writes its own column, so `exactFields` and a lenient second
+       instance both reading `fields` is not ambiguous — they both read it, and
+       both results are recorded separately.
 
-       The rule's original justification (that otherwise "which scorer reads
-       the key depends on registration order") does not actually hold, because
-       nothing dispatches by key: the runner runs every applicable scorer and
-       each writes its own baseline column. Two scorers reading `fields` is
-       unambiguous — they both read it.
-
-       Kept as specified for now because relaxing it would weaken a guard that
-       is cheap and has caught real mistakes. The narrower rule that would
-       preserve both is: reject a duplicate claim only when the two scorers
-       come from the same factory with identical configuration, which needs a
-       factory identity that `Scorer` does not currently carry. */
+       The mistake was importing an intuition from static analysis, where a
+       rule really does own its identifier because exactly one rule reports a
+       given diagnostic. Here the relationship is many-to-many by design.
+       ADR 003 records this. Duplicate scorer NAMES are still rejected above,
+       because a name is a baseline column and a collision there silently
+       merges two different measurements into one history. */
     for (const claim of scorer.claims) {
-      const owner = owners.get(claim.key);
-      if (owner !== undefined) {
-        problems.push(
-          `expectation key "${claim.key}" is claimed by both "${owner}" and ` +
-            `"${scorer.name}": ownership must be unambiguous, since otherwise which ` +
-            `scorer reads it depends on registration order`,
-        );
-        continue;
-      }
-      owners.set(claim.key, scorer.name);
+      if (!owners.has(claim.key)) owners.set(claim.key, scorer.name);
     }
   }
 
@@ -168,7 +154,7 @@ export function validateExpectations(cases: readonly EvalCase[], scorers: readon
       const owner = owners.get(key);
       if (owner === undefined) continue;
       problems.push(
-        `case "${evalCase.id}": \`meta.${key}\` collides with the expectation key ` +
+        `case "${evalCase.id}": \`meta.${key}\` collides with an expectation key ` +
           `claimed by "${owner}". \`meta\` is never scored, so an expectation placed ` +
           `there is silently ignored — move it into \`expect\``,
       );

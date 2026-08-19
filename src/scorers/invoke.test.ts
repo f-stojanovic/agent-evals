@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { InvalidScoreError, invokeScorer } from './invoke.js';
-import { evalCase, subjectOutput } from '../testing.js';
+import { scoreArgs, subjectOutput } from '../testing.js';
 import type { Score, Scorer } from '../types.js';
 
 /** Returns whatever it is handed, so a test can state the exact malformed
@@ -14,7 +14,7 @@ function scorerReturning(name: string, score: unknown): Scorer {
   };
 }
 
-const args = { case: evalCase(), output: subjectOutput({ text: '{}' }) };
+const args = scoreArgs({ output: subjectOutput({ text: '{}' }) });
 
 describe('invokeScorer', () => {
   it('passes a valid score straight through', async () => {

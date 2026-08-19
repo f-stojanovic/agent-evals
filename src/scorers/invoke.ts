@@ -7,7 +7,7 @@
  * against a fuzzy mental model of what a "score" is.
  */
 
-import type { EvalCase, Score, Scorer, SubjectOutput } from '../types.js';
+import type { Score, ScoreArgs, Scorer } from '../types.js';
 
 /** A scorer violated the {@link Score} contract. Always a bug in the scorer,
  *  never a property of the model being evaluated — which is why it throws
@@ -31,10 +31,7 @@ export class InvalidScoreError extends Error {
  * @throws {InvalidScoreError} if the returned score is outside 0..1, is not
  * finite, or is attributed to the wrong scorer.
  */
-export async function invokeScorer(
-  scorer: Scorer,
-  args: { case: EvalCase; output: SubjectOutput },
-): Promise<Score> {
+export async function invokeScorer(scorer: Scorer, args: ScoreArgs): Promise<Score> {
   const score = await scorer.score(args);
 
   const problems: string[] = [];

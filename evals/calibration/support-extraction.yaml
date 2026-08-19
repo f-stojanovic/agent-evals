@@ -1,0 +1,199 @@
+# Judge calibration set.
+#
+# Each case pairs a FROZEN subject output with a score a human assigned by
+# hand. `npm run calibrate` runs the judge against these same outputs and
+# reports how far it lands from the human labels.
+#
+# The outputs are frozen deliberately: if the subject were re-run, a changed
+# score could mean the judge drifted or the subject did, and the measurement
+# would be uninterpretable.
+#
+# The set spans the range on purpose — two clearly-right, two clearly-wrong,
+# and several borderline. A calibration set of easy cases reports a flattering
+# number that says nothing about the cases you needed a judge for in the first
+# place. If the judge's MAE is low here but high on the borderline cases only,
+# that is the finding, not a rounding error.
+#
+# `humanReason` is the answer key and is never shown to the judge.
+
+- id: cal-clear-correct-01
+  description: Unambiguous extraction, every field right. The judge should be near 1.
+  humanScore: 1.0
+  humanReason: >
+    Correct on all four fields. Nothing here is a matter of taste — if the judge
+    scores this below 0.9 it is broken, not strict.
+  expect:
+    rubric: >
+      The output must be a JSON object extracting {intent, urgency, customer_name,
+      requested_action} from a support email in which Maja Petrović reports a mug
+      that arrived shattered and explicitly asks for a refund rather than a
+      replacement. Score 1.0 if all four fields are correct. Deduct roughly 0.25
+      per field that is wrong or missing. Inventing a field value that is not
+      supported by the email is worse than omitting it.
+  output:
+    model: subject-model-v1
+    text: |
+      {"intent":"refund_request","urgency":"medium","customer_name":"Maja Petrović","requested_action":"issue_refund"}
+
+- id: cal-clear-wrong-01
+  description: Confidently wrong on every field. The judge should be near 0.
+  humanScore: 0.0
+  humanReason: >
+    Every field contradicts the email. A judge that awards partial credit for
+    "well-formed JSON" is rewarding the wrong property, and that is exactly the
+    miscalibration this set exists to catch.
+  expect:
+    rubric: >
+      The output must be a JSON object extracting {intent, urgency, customer_name,
+      requested_action} from a support email in which Maja Petrović reports a mug
+      that arrived shattered and explicitly asks for a refund rather than a
+      replacement. Score 1.0 if all four fields are correct. Deduct roughly 0.25
+      per field that is wrong or missing. Well-formed JSON with wrong contents
+      scores 0 — format is measured separately.
+  output:
+    model: subject-model-v1
+    text: |
+      {"intent":"technical_issue","urgency":"low","customer_name":"Tom Weller","requested_action":"escalate_to_engineering"}
+
+- id: cal-partial-three-of-four-01
+  description: Three fields right, urgency overstated. Anchors the middle of the range.
+  humanScore: 0.75
+  humanReason: >
+    Exactly one field wrong out of four, and the rubric says deduct ~0.25 per
+    field. This case tests whether the judge can follow an arithmetic rubric
+    rather than forming a general impression — a judge that returns 0.5 here is
+    reading "one thing is wrong" as "roughly half right".
+  expect:
+    rubric: >
+      The output must be a JSON object extracting {intent, urgency, customer_name,
+      requested_action} from a support email in which Maja Petrović reports a mug
+      that arrived shattered and explicitly asks for a refund. The correct urgency
+      is medium: the customer is annoyed but nothing is time-critical. Score 1.0
+      if all four fields are correct and deduct roughly 0.25 per field that is
+      wrong or missing.
+  output:
+    model: subject-model-v1
+    text: |
+      {"intent":"refund_request","urgency":"critical","customer_name":"Maja Petrović","requested_action":"issue_refund"}
+
+- id: cal-hallucinated-name-01
+  description: >
+    Invents a first name the email never contained. Tests whether the judge
+    penalises fabrication harder than omission, as the rubric demands.
+  humanScore: 0.5
+  humanReason: >
+    Three fields correct, but the fabricated "Aleksandar" is the failure mode
+    that matters most in extraction — a plausible invention is harder to catch
+    downstream than a blank. Scored below a plain 3-of-4 (0.75) for that reason.
+    Judges tend to score this too generously because the output reads fluently.
+  expect:
+    rubric: >
+      Extract {intent, urgency, customer_name, requested_action} from an email
+      signed only "A. Novak". The correct customer_name is "A. Novak" — the first
+      name is not available. Returning an invented first name is a fabrication and
+      must be penalised MORE heavily than leaving the field null: a plausible
+      invention survives downstream review, a blank does not. Score 1.0 for four
+      correct fields, deduct ~0.25 per ordinary error, and deduct ~0.5 for a
+      fabricated value.
+  output:
+    model: subject-model-v1
+    text: |
+      {"intent":"cancellation_request","urgency":"high","customer_name":"Aleksandar Novak","requested_action":"explain_cancellation_terms"}
+
+- id: cal-borderline-intent-01
+  description: >
+    THE HARD ONE. The ambiguous case from evals/cases — a venting customer who
+    asks about cancellation terms without asking to cancel. Two competent
+    annotators disagree, so a high judge spread here is correct behaviour.
+  humanScore: 0.6
+  humanReason: >
+    The output says `complaint`, which the case's own `acceptable` list marks as
+    defensible, but the human reviewer's primary label is `cancellation_request`.
+    Not wrong, not the preferred reading. If the judge returns high disagreement
+    across samples on this case that is a feature — it is reporting the ambiguity
+    that is genuinely there.
+  expect:
+    rubric: >
+      Extract {intent, urgency, customer_name, requested_action} from an email in
+      which a customer complains about a broken export and then asks what the
+      notice period is on the annual plan. The preferred intent is
+      `cancellation_request`; `complaint` and `billing_question` are defensible
+      alternatives that should score around 0.6 rather than 0. urgency `high` is
+      preferred, `medium` is defensible. customer_name must be "A. Novak" exactly.
+    acceptable:
+      intent: [complaint, billing_question]
+      urgency: [medium]
+  output:
+    model: subject-model-v1
+    text: |
+      {"intent":"complaint","urgency":"medium","customer_name":"A. Novak","requested_action":"explain_cancellation_terms"}
+
+- id: cal-prose-not-json-01
+  description: >
+    Correct understanding, wrong format entirely. Tests that the judge grades the
+    rubric it was given rather than the property it finds most salient.
+  humanScore: 0.3
+  humanReason: >
+    The content is right — it identified the refund request, the customer, and
+    the action. But the rubric asks for a JSON object and this is a paragraph, so
+    it fails the stated criterion while demonstrating the understanding. 0.3
+    credits the comprehension without pretending the requirement was met. Judges
+    split hard on this one; some give 0.9 for being "essentially correct".
+  expect:
+    rubric: >
+      The output must be a JSON object with the keys {intent, urgency,
+      customer_name, requested_action}. Prose that describes the right answer
+      without producing the requested structure has not met the requirement:
+      score it around 0.3 to credit the comprehension, not higher.
+  output:
+    model: subject-model-v1
+    text: >
+      Maja Petrović is requesting a refund for order #48812 after receiving a
+      shattered mug. She explicitly declined a replacement, so the action here is
+      to issue a refund. I'd treat this as medium urgency.
+
+- id: cal-tool-call-correct-01
+  description: >
+    Right answer delivered through a tool call rather than text. Checks that the
+    judge does not penalise a compliant path it happens to see less often.
+  humanScore: 1.0
+  humanReason: >
+    Using the provided tool is the intended path, and every field is correct.
+    Scoring this below a text response with identical content would mean the
+    judge is grading familiarity rather than quality.
+  expect:
+    rubric: >
+      Extract {intent, urgency, customer_name, requested_action} from Maja
+      Petrović's email about a shattered mug and an explicit refund request. The
+      subject may answer either as JSON text or by calling the `record_extraction`
+      tool — both are equally valid and neither should be preferred. Score 1.0 for
+      four correct fields.
+  output:
+    model: subject-model-v1
+    toolCalls:
+      - name: record_extraction
+        input:
+          intent: refund_request
+          urgency: medium
+          customer_name: Maja Petrović
+          requested_action: issue_refund
+
+- id: cal-refused-01
+  description: Model declined to answer. Should be near 0 without being treated as an error.
+  humanScore: 0.0
+  humanReason: >
+    A refusal extracts nothing. It is a legitimate model behaviour and a total
+    failure at the task, and the judge should say so plainly rather than awarding
+    credit for the polite hedge.
+  expect:
+    rubric: >
+      Extract {intent, urgency, customer_name, requested_action} from a customer
+      support email. A response that declines to perform the extraction, asks for
+      clarification instead, or returns nothing usable scores 0 regardless of how
+      reasonable the refusal sounds.
+  output:
+    model: subject-model-v1
+    text: >
+      I'm not able to determine the customer's intent from this email without more
+      context about your product and support taxonomy. Could you clarify what
+      categories you'd like me to use?

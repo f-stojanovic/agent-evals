@@ -39,17 +39,22 @@ expect:
     urgency: high
     customer_name: A. Novak
     requested_action: explain_cancellation_terms
-# Everything below is annotation, not expectation. It lives in `meta` because
-# no scorer claims it, and an unclaimed key inside `expect` is a hard error —
-# it would otherwise look exactly like an expectation nobody got round to
-# enforcing. See validateExpectations in src/scorers/registry.ts.
-meta:
-  # Alternatives a human reviewer accepted as defensible. Not enforced yet:
-  # awarding partial credit for them needs a graded scorer that claims this
-  # key, at which point it moves back into `expect` and starts counting.
+  # Alternatives a human reviewer accepted as defensible. `llmJudge` claims
+  # this key (optionally) and passes them to the judge, so an output matching
+  # one of them scores highly rather than being marked wrong. It lived in
+  # `meta` for exactly one commit, while no scorer read it — which was the
+  # honest place for an expectation nothing enforced, and the wrong place the
+  # moment one did.
   acceptable:
     intent: [complaint, billing_question]
     urgency: [medium]
+  rubric: >
+    Extract {intent, urgency, customer_name, requested_action}. The preferred
+    intent is `cancellation_request`; the alternatives listed under `acceptable`
+    are defensible and should score highly. customer_name must be "A. Novak"
+    exactly — the email gives only an initial, and inventing a first name is a
+    fabrication and worse than any of the intent disagreements.
+meta:
   notes: >
     customer_name is only available as an initial + surname. An extraction that
     returns "A. Novak" is correct; one that invents a first name is not, and

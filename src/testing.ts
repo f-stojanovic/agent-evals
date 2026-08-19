@@ -22,7 +22,15 @@
  *     not pull in a test framework.
  */
 
-import type { EvalCase, SubjectContext, SubjectOutput, ToolCall } from './types.js';
+import { extractStructured } from './scorers/extract.js';
+import type {
+  EvalCase,
+  Extraction,
+  ScoreArgs,
+  SubjectContext,
+  SubjectOutput,
+  ToolCall,
+} from './types.js';
 
 /**
  * A `SubjectOutput` with plausible defaults, overridable per field.
@@ -59,6 +67,27 @@ export function evalCase(overrides: Partial<EvalCase> = {}): EvalCase {
     input: input ?? null,
     expect: expectations ?? {},
     ...rest,
+  };
+}
+
+/**
+ * The argument object a scorer receives, with `extraction` derived from the
+ * output exactly as the runner derives it.
+ *
+ * Deriving rather than requiring the caller to supply it keeps tests honest:
+ * a hand-written extraction could disagree with what the real pipeline would
+ * produce, and a scorer test that passes against an impossible input is worth
+ * nothing. Pass `extraction` explicitly only to exercise a case the real
+ * extractor cannot reach.
+ */
+export function scoreArgs(
+  overrides: { case?: EvalCase; output?: SubjectOutput; extraction?: Extraction } = {},
+): ScoreArgs {
+  const output = overrides.output ?? subjectOutput();
+  return {
+    case: overrides.case ?? evalCase(),
+    output,
+    extraction: overrides.extraction ?? extractStructured(output),
   };
 }
 
