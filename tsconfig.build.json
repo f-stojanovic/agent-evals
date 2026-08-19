@@ -1,0 +1,6 @@
+{
+  /* `build` emits the library only. `typecheck` uses the base config, which
+     also covers *.test.ts — tests are type-checked but never shipped. */
+  "extends": "./tsconfig.json",
+  "exclude": ["src/**/*.test.ts"]
+}

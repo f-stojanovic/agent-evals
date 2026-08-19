@@ -1,0 +1,50 @@
+# Deliberately ambiguous cases, kept in their own file so they can be excluded
+# from the strict CI gate (`--tag ambiguous`) while still being measured.
+#
+# These exist because a suite of only unambiguous cases saturates at 1.0 and
+# then tells you nothing. The interesting signal is how a change moves the
+# hard cases, and how a scorer behaves when there is no single right answer.
+#
+# A single case may be written as a mapping rather than a list.
+
+id: cancellation-or-complaint-01
+description: >
+  Genuinely ambiguous, and two competent human annotators would disagree.
+
+  The customer never asks to cancel — they ask what the cancellation terms are,
+  while venting about the product. Is the intent `cancellation_request` (they
+  are clearly heading there) or `complaint` / `billing_question` (that is
+  literally what they asked)? Urgency is contested too: nothing is on fire, but
+  a churning customer is arguably high urgency to the business.
+
+  Recorded here as the answer we would defend, with the credible alternatives
+  written down. It is a case for a graded scorer, not an exact-match one — and
+  it is exactly why Score.value is continuous: "wrong" and "defensibly
+  different" must not collapse into the same number.
+tags: [extraction, ambiguous, human-disagreement]
+weight: 1
+input:
+  from: A. Novak <anovak@example.org>
+  subject: this is getting old
+  body: |
+    Third month in a row the report export has silently dropped rows. I have
+    stopped trusting the numbers and I am now rebuilding them by hand, which
+    is the thing I pay you to avoid.
+
+    What's the notice period on the annual plan, and do I get anything back if
+    I leave mid-term?
+expect:
+  fields:
+    intent: cancellation_request
+    urgency: high
+    customer_name: A. Novak
+    requested_action: explain_cancellation_terms
+  # Alternatives a human reviewer accepted as defensible. A graded scorer
+  # should award partial credit for these rather than zero.
+  acceptable:
+    intent: [complaint, billing_question]
+    urgency: [medium]
+  notes: >
+    customer_name is only available as an initial + surname. An extraction that
+    returns "A. Novak" is correct; one that invents a first name is not, and
+    that failure mode is more important to catch than the intent disagreement.

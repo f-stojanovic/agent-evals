@@ -1,0 +1,310 @@
+/**
+ * The stable contract of the harness.
+ *
+ * Everything else in this repo is replaceable: scorers, runners, reporters,
+ * providers. These types are not. They are what a baseline file is written
+ * against, so changing them retroactively invalidates recorded history.
+ *
+ * Convention: `type` for plain data (structural, no inheritance, cheap to
+ * union), `interface` only where something is meant to be implemented or
+ * merged into. TypeScript makes the two nearly interchangeable; the split is
+ * a signal to the reader about intent, not a technical necessity.
+ */
+
+/**
+ * Token accounting for a single subject invocation.
+ *
+ * Kept separate from cost on purpose: tokens are an observed fact reported by
+ * the provider, while cost is derived from a price table that changes over
+ * time. Storing tokens means an old run can be re-priced later; storing only
+ * dollars would freeze a stale price into the record.
+ *
+ * The cache fields are optional because not every provider (or every request)
+ * reports them.
+ */
+export type Usage = {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+};
+
+/**
+ * A single tool invocation the subject attempted.
+ *
+ * `input` is `unknown` rather than a generic: tool arguments are provider
+ * JSON, and the harness has no business assuming a shape it did not define.
+ * Scorers that care about a specific tool narrow it themselves, at the point
+ * where they actually know the schema.
+ *
+ * `id` is optional because not every provider or transcript format emits one.
+ */
+export type ToolCall = {
+  name: string;
+  input: unknown;
+  id?: string;
+};
+
+/**
+ * The observable result of running the thing under test, once.
+ *
+ * `raw` is deliberately preserved and deliberately `unknown`. Scorers written
+ * a year from now will want fields nobody thought to normalise today (stop
+ * reason, thinking blocks, citations, refusal signals). Throwing the provider
+ * response away at the boundary makes those scorers impossible to write
+ * retroactively; keeping it makes them a same-day change.
+ *
+ * `text` and `toolCalls` are optional because an agent turn may legitimately
+ * produce neither, one, or both. An absent field means "the subject did not
+ * produce this", never "the harness failed to look".
+ *
+ * `model` and `latencyMs` live here rather than on the result wrapper because
+ * they describe this specific invocation. A retried case may hit a different
+ * model version; the per-invocation record is what makes that visible.
+ */
+export type SubjectOutput = {
+  text?: string;
+  toolCalls?: ToolCall[];
+  raw: unknown;
+  model: string;
+  usage: Usage;
+  latencyMs: number;
+};
+
+/**
+ * Ambient information a subject needs but that is not part of its input.
+ *
+ * `signal` is mandatory, not optional. A harness that cannot cancel in-flight
+ * work turns one hung request into a hung CI job, and per-case timeouts are
+ * the runner's job to enforce — which it can only do if every subject accepts
+ * a signal.
+ *
+ * `caseId` is here purely for correlation: logs, traces, and provider
+ * metadata. Subjects must not branch on it — a subject that behaves
+ * differently per case is not the thing being measured.
+ */
+export type SubjectContext = {
+  signal: AbortSignal;
+  caseId: string;
+};
+
+/**
+ * The thing under test, reduced to a function.
+ *
+ * Not a class and not an interface: anything that can turn an input into a
+ * `SubjectOutput` qualifies — a raw API call, a full agent loop, a shell
+ * command wrapper, or a stub in a test. Keeping this a bare function type is
+ * what lets the entire harness be exercised without a network.
+ */
+export type Subject = (input: unknown, ctx: SubjectContext) => Promise<SubjectOutput>;
+
+/** Applied when a case omits `weight`. Kept as a named constant so the
+ *  default is visible in scoring code instead of being a bare `?? 1`. */
+export const DEFAULT_CASE_WEIGHT = 1;
+
+/**
+ * One test case, authored by a human in YAML.
+ *
+ * WHY `id` MUST BE STABLE
+ * -----------------------
+ * `id` is the primary key of the baseline. The baseline file records "case
+ * `refund-urgent-01` scored 0.83"; the CI gate compares the next run against
+ * that row by id and nothing else. So:
+ *
+ *   - Renaming an id reads as "the old case vanished, a new one appeared".
+ *     Its recorded history is orphaned and the gate has no prior to compare
+ *     against, so a genuine regression can slip through unnoticed.
+ *   - Deriving the id from content (a hash of the input, an array index, a
+ *     filename) is worse: fixing a typo in the prompt would silently rotate
+ *     the key and wipe the history of a case that did not conceptually change.
+ *
+ * Hence: human-authored, meaningful, and treated as append-only. Change the
+ * input freely; change the id only when the case genuinely became a different
+ * question, and accept that you are starting its history over.
+ *
+ * `input` is `unknown` because the harness does not own the subject's input
+ * schema — the subject does, and it validates at its own boundary.
+ *
+ * `expect` is an open record rather than a fixed shape because each scorer
+ * reads its own keys out of it (an exact-match scorer wants `fields`, a judge
+ * wants `rubric`). A closed type here would force every new scorer to edit
+ * this file, coupling the contract to its consumers.
+ */
+export type EvalCase = {
+  /** Stable, human-authored, globally unique. The baseline key. See above. */
+  id: string;
+  /** Free-text note on what this case is probing. Read by humans, not code. */
+  description?: string;
+  /** Passed verbatim to the subject. */
+  input: unknown;
+  /** Scorer-defined expectations. Each scorer reads the keys it owns. */
+  expect: Record<string, unknown>;
+  /** For slicing results (`--tag regression`, `--tag ambiguous`). */
+  tags?: string[];
+  /** Relative importance in the suite aggregate. Defaults to
+   *  {@link DEFAULT_CASE_WEIGHT} when absent. */
+  weight?: number;
+};
+
+/**
+ * One scorer's verdict on one case.
+ *
+ * WHY `value` IS CONTINUOUS
+ * -------------------------
+ * `value` is a number in [0, 1] and never a boolean, because a boolean throws
+ * away the only signal that makes an eval suite useful over time:
+ *
+ *   - Direction. "18/20 passing" is identical before and after a change that
+ *     moved every failing case from hopeless to nearly-right. A mean of 0.41
+ *     rising to 0.78 is not.
+ *   - Sensitivity. Partial credit (4 of 5 extracted fields correct) is the
+ *     difference between a prompt tweak that helped and one that did nothing.
+ *     Booleans quantise that away and make small real improvements invisible.
+ *   - Threshold tuning. With a stored continuous value you can re-ask "what
+ *     would the gate have said at 0.7?" against historical runs. With a stored
+ *     boolean the threshold is baked in and the question is unanswerable.
+ *
+ * `passed` is therefore derived — `value >= threshold` — and is a convenience
+ * for reporting, not the source of truth. Never persist `passed` without
+ * `value`, and never let a scorer emit only 0.0 or 1.0 when a graded answer is
+ * available.
+ *
+ * `reason` matters more than it looks: a failing case with no explanation
+ * costs a human the full re-run to understand it. Judge scorers should always
+ * populate it; deterministic scorers should populate it on failure.
+ */
+export type Score = {
+  /** Scorer name, matching {@link Scorer.name}. Identifies the column. */
+  scorer: string;
+  /** Continuous, 0..1 inclusive. Never a coerced boolean. See above. */
+  value: number;
+  /** Derived from a threshold. Reporting convenience, not ground truth. */
+  passed: boolean;
+  /** Human-readable justification. Populate at least on failure. */
+  reason?: string;
+  /** Scorer-specific detail (per-field diffs, judge tokens, rubric split). */
+  meta?: Record<string, unknown>;
+};
+
+/**
+ * An interface, not a type alias, because it is meant to be implemented —
+ * both by objects in this repo and by users writing their own scorers.
+ *
+ * Scoring is async even for purely deterministic scorers so that swapping a
+ * string comparison for an LLM judge is not a breaking signature change for
+ * every caller.
+ *
+ * The argument is a single named object rather than positional parameters:
+ * `score({ case, output })` reads unambiguously at every call site, and
+ * adding a future field (a logger, a signal) does not break implementors.
+ */
+export interface Scorer {
+  /** Stable identifier. Becomes {@link Score.scorer} and a baseline column,
+   *  so it carries the same stability obligation as {@link EvalCase.id}. */
+  readonly name: string;
+  score(args: { case: EvalCase; output: SubjectOutput }): Promise<Score>;
+}
+
+/**
+ * Cost in USD, derived from {@link Usage} and a price table.
+ *
+ * Broken out per token class rather than kept as a single number because the
+ * interesting optimisation question is almost always "which class dominates" —
+ * a suite whose spend is 90% cache writes has a very different fix than one
+ * that is 90% output tokens.
+ */
+export type CostBreakdown = {
+  inputUsd: number;
+  outputUsd: number;
+  cacheReadUsd?: number;
+  cacheWriteUsd?: number;
+  totalUsd: number;
+};
+
+/**
+ * Latency distribution across a suite.
+ *
+ * Percentiles rather than a mean: agent latency is heavy-tailed, and the mean
+ * hides exactly the slow-tail behaviour worth acting on.
+ *
+ * Aggregation is deliberately not implemented yet — this is the shape the
+ * runner will fill in.
+ */
+export type LatencyAggregate = {
+  p50Ms: number;
+  p95Ms: number;
+  maxMs: number;
+  totalMs: number;
+};
+
+/** Case-level tallies. Split out so a reporter can render a summary line
+ *  without walking every result. */
+export type SuiteTotals = {
+  cases: number;
+  passed: number;
+  failed: number;
+  /** Cases that threw before producing output. Counted apart from `failed`:
+   *  a crashed subject is an infrastructure problem, not a quality signal,
+   *  and conflating the two makes a broken API key look like a regression. */
+  errored: number;
+  /** Weighted mean of case scores, 0..1. */
+  weightedScore: number;
+};
+
+/**
+ * The outcome of one case: what the subject did, and what each scorer made
+ * of it.
+ *
+ * `output` and `error` are both optional and mutually exclusive in practice —
+ * a case either produced output or blew up. They are not modelled as a
+ * discriminated union because a case can also produce output *and* have a
+ * scorer throw, and a union would force that middle state to be discarded.
+ *
+ * `error` stores a flattened message/stack rather than an `Error` instance
+ * because results must survive `JSON.stringify` to reach a baseline file.
+ */
+export type CaseResult = {
+  caseId: string;
+  /** Weight actually applied, resolved from the case. Recorded rather than
+   *  recomputed so a historical result stays interpretable after the case's
+   *  weight is edited. */
+  weight: number;
+  output?: SubjectOutput;
+  error?: { message: string; stack?: string };
+  scores: Score[];
+  /** True only if every score passed. Derived, like {@link Score.passed}. */
+  passed: boolean;
+  /** Weighted-mean-ready aggregate of this case's scores, 0..1. */
+  value: number;
+  /** Wall clock for the whole case, including scoring — which is why this is
+   *  not simply {@link SubjectOutput.latencyMs}. */
+  latencyMs: number;
+  usage: Usage;
+  cost?: CostBreakdown;
+};
+
+/**
+ * The outcome of a whole suite run: the unit that gets compared against the
+ * baseline and, eventually, written back as the new one.
+ *
+ * Timestamps are ISO-8601 strings, not `Date`, so the record round-trips
+ * through JSON unchanged.
+ *
+ * Aggregation logic is not implemented yet; these are the fields the runner
+ * will populate.
+ */
+export type SuiteResult = {
+  suiteId: string;
+  /** ISO-8601. Identifies the run in the baseline history. */
+  startedAt: string;
+  durationMs: number;
+  results: CaseResult[];
+  totals: SuiteTotals;
+  /** Suite-wide token sum. Individual usage stays on each case. */
+  usage: Usage;
+  cost?: CostBreakdown;
+  latency: LatencyAggregate;
+  /** The CI gate's answer. Derived from totals plus the baseline comparison,
+   *  never set directly by a scorer. */
+  passed: boolean;
+};

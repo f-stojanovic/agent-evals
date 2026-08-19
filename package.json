@@ -1,0 +1,24 @@
+{
+  "name": "agent-evals",
+  "version": "0.1.0",
+  "description": "Evaluation harness for LLM agents with an immutable baseline enforced as a CI gate.",
+  "license": "MIT",
+  "author": "Filip Stojanović",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "yaml": "^2.8.1",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.9",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}

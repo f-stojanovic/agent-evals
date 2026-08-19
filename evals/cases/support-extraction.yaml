@@ -1,0 +1,58 @@
+# Subject under test: an agent that reads a customer support email and returns
+# { intent, urgency, customer_name, requested_action } as structured data.
+#
+# `id` values here are permanent. See the note on EvalCase.id in src/types.ts:
+# renaming one orphans its baseline history.
+
+- id: refund-damaged-item-01
+  description: >
+    Unambiguous refund request. Every field is stated explicitly in the email,
+    so any reasonable annotator produces the same answer. This is the case that
+    should never regress — if it does, something is badly wrong.
+  tags: [extraction, happy-path]
+  weight: 1
+  input:
+    from: Maja Petrović <maja.petrovic@example.com>
+    subject: Order #48812 arrived broken
+    body: |
+      Hi,
+
+      My order #48812 arrived this morning and the ceramic mug was shattered
+      inside the box. The packaging was clearly damaged in transit.
+
+      I do not want a replacement — please refund the full amount to my card.
+
+      Thanks,
+      Maja Petrović
+  expect:
+    fields:
+      intent: refund_request
+      urgency: medium
+      customer_name: Maja Petrović
+      requested_action: issue_refund
+
+- id: outage-escalation-01
+  description: >
+    Explicit urgency signals (production down, revenue impact, a deadline) that
+    the model must carry into the `urgency` field rather than defaulting to
+    medium. Probes whether urgency is inferred from consequences, not keywords.
+  tags: [extraction, urgency]
+  weight: 2
+  input:
+    from: Tom Weller <t.weller@northgate-retail.example>
+    subject: API returning 503 for all checkout calls
+    body: |
+      Our entire checkout has been down for 40 minutes. Every call to
+      /v2/checkout returns 503. We are losing roughly £4k an hour and our
+      Black Friday campaign goes live at 09:00 tomorrow.
+
+      I need someone on this now. Escalate if you have to.
+
+      Tom Weller
+      Head of Engineering, Northgate Retail
+  expect:
+    fields:
+      intent: technical_issue
+      urgency: critical
+      customer_name: Tom Weller
+      requested_action: escalate_to_engineering
