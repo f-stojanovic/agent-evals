@@ -86,6 +86,20 @@ export type SubjectOutput = {
 export type SubjectContext = {
   signal: AbortSignal;
   caseId: string;
+  /**
+   * 0-based retry counter, incremented by the runner on each re-attempt of the
+   * same case.
+   *
+   * Legitimate uses are observational or infrastructural: tagging a log line,
+   * busting a response cache so a retry is not served the same failure, or
+   * widening a client-side timeout.
+   *
+   * It must not change what the subject *does*. A subject that, say, switches
+   * to a stricter prompt on attempt 1 is no longer the artefact the baseline
+   * describes: the recorded score would reflect a system the deployed one does
+   * not match, which is the one thing an eval must never do.
+   */
+  attempt: number;
 };
 
 /**
@@ -144,6 +158,18 @@ export type EvalCase = {
   /** Relative importance in the suite aggregate. Defaults to
    *  {@link DEFAULT_CASE_WEIGHT} when absent. */
   weight?: number;
+  /**
+   * Free-form authoring annotations: `owner`, `ticket`, links to the incident
+   * that motivated the case, whatever the team finds useful.
+   *
+   * The harness never reads this. Nothing in it may influence loading,
+   * scoring, aggregation, or the baseline gate — it exists purely so that
+   * `expect` can stay strictly scorer-owned. Without it, humans annotate cases
+   * by inventing keys inside `expect`, and every such key then looks
+   * indistinguishable from an expectation that no scorer got round to
+   * consuming. See `validateExpectations` in `src/scorers/registry.ts`.
+   */
+  meta?: Record<string, unknown>;
 };
 
 /**
@@ -202,6 +228,28 @@ export interface Scorer {
   /** Stable identifier. Becomes {@link Score.scorer} and a baseline column,
    *  so it carries the same stability obligation as {@link EvalCase.id}. */
   readonly name: string;
+  /**
+   * The keys of {@link EvalCase.expect} this scorer reads.
+   *
+   * Declaring them turns the suite's most dangerous failure mode into a
+   * startup error. Expectations are a loose bag of scorer-owned keys, so a
+   * case that says `field:` where it meant `fields:` is structurally valid,
+   * loads without complaint, and is then simply not read by anyone. The case
+   * runs, scores 1.0 for having nothing to check, and the suite reports green
+   * while measuring nothing. A green eval that measures nothing is strictly
+   * worse than a red one: it actively buys confidence that is not there.
+   *
+   * With `claims` declared, the union of all scorers' claims can be checked
+   * against the keys actually present across all cases before a single API
+   * call is made. Anything unclaimed is a typo or a scorer someone forgot to
+   * register, and both are loud. It also makes ownership explicit: two scorers
+   * claiming the same key is an ambiguity worth failing on rather than
+   * resolving by registration order.
+   *
+   * Non-authoritative annotations belong in {@link EvalCase.meta}, which no
+   * scorer claims and the check ignores.
+   */
+  readonly claims: readonly string[];
   score(args: { case: EvalCase; output: SubjectOutput }): Promise<Score>;
 }
 

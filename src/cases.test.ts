@@ -80,6 +80,46 @@ describe('loadCases', () => {
     expect(only && 'weight' in only).toBe(false);
   });
 
+  it('carries `meta` through untouched, as free-form authoring annotation', async () => {
+    const dir = await tempSuite({
+      'a.yaml': [
+        'id: annotated',
+        'input: hi',
+        'expect: {}',
+        'meta:',
+        '  owner: filip',
+        '  ticket: EVAL-12',
+        '  nested: { anything: [1, 2] }',
+      ].join('\n'),
+    });
+
+    const [only] = await loadCases(dir);
+
+    expect(only?.meta).toEqual({
+      owner: 'filip',
+      ticket: 'EVAL-12',
+      nested: { anything: [1, 2] },
+    });
+  });
+
+  it('names the case id in errors from single-mapping files too', async () => {
+    const dir = await tempSuite({
+      'list.yaml': ['- id: in-a-list', '  input: hi'].join('\n'),
+      'mapping.yaml': ['id: on-its-own', 'input: hi'].join('\n'),
+    });
+
+    const error = await loadFailure(dir);
+
+    /* Uniform across both file shapes: the id is what the author searches
+       for, and the index only means something in a list. */
+    expect(error.problems.find((p) => p.includes('list.yaml'))).toContain(
+      '[case 0 · id "in-a-list"]',
+    );
+    expect(error.problems.find((p) => p.includes('mapping.yaml'))).toContain(
+      '[id "on-its-own"]',
+    );
+  });
+
   it('reports malformed YAML with the file path and position', async () => {
     const dir = await tempSuite({
       'broken.yaml': ['id: oops', '  input: badly indented', 'expect: {}'].join('\n'),

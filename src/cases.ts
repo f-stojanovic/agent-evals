@@ -11,6 +11,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { join, relative, isAbsolute } from 'node:path';
 import { parse as parseYaml, YAMLParseError } from 'yaml';
 import { z } from 'zod';
+import { ProblemListError } from './errors.js';
 import type { EvalCase } from './types.js';
 
 const YAML_FILE = /\.ya?ml$/i;
@@ -30,27 +31,17 @@ export const evalCaseSchema = z.strictObject({
   expect: z.record(z.string(), z.unknown()),
   tags: z.array(z.string().min(1)).optional(),
   weight: z.number().positive().optional(),
+  /* Deliberately unconstrained beyond "a mapping": this is the authors' space,
+     and the harness never reads it. */
+  meta: z.record(z.string(), z.unknown()).optional(),
 });
 
-/**
- * Aggregates every problem found across every file rather than throwing on
- * the first one.
- *
- * Fail-fast is the wrong trade here: a human editing twelve YAML files wants
- * all twelve mistakes in one pass, not twelve edit-run cycles.
- */
-export class CaseLoadError extends Error {
+/** Malformed case files. See {@link ProblemListError} for why it batches. */
+export class CaseLoadError extends ProblemListError {
   override readonly name = 'CaseLoadError';
-  readonly problems: readonly string[];
 
   constructor(problems: readonly string[]) {
-    super(
-      problems.length === 1
-        ? `Failed to load eval cases: ${problems[0]}`
-        : `Failed to load eval cases (${problems.length} problems):\n` +
-          problems.map((p) => `  - ${p}`).join('\n'),
-    );
-    this.problems = problems;
+    super('Failed to load eval cases', problems);
   }
 }
 
@@ -124,6 +115,7 @@ export async function loadCases(dir: string): Promise<EvalCase[]> {
         ...(parsed.description !== undefined && { description: parsed.description }),
         ...(parsed.tags !== undefined && { tags: parsed.tags }),
         ...(parsed.weight !== undefined && { weight: parsed.weight }),
+        ...(parsed.meta !== undefined && { meta: parsed.meta }),
       });
     }
   }
@@ -165,21 +157,25 @@ async function collectYamlFiles(dir: string): Promise<string[]> {
 }
 
 /**
- * Names the offending case as precisely as the data allows: the id if the
- * entry has one (that is what the author searches for), the index otherwise.
+ * Names the offending case as precisely as the data allows.
+ *
+ * The id is what the author will search for, so it is included whichever shape
+ * the file uses; the index is only meaningful for a list and is omitted for a
+ * single mapping. Uniform across both shapes on purpose — error output that
+ * changes format depending on how the file happened to be written is one more
+ * thing for the reader to decode.
  */
 function location(file: string, index: number, isList: boolean, entry: unknown): string {
   const path = display(file);
-  if (!isList) return path;
 
   const id =
     typeof entry === 'object' && entry !== null && 'id' in entry
       ? (entry as { id: unknown }).id
       : undefined;
+  const named = typeof id === 'string' && id.length > 0 ? `id "${id}"` : undefined;
 
-  return typeof id === 'string' && id.length > 0
-    ? `${path} [case ${index} · id "${id}"]`
-    : `${path} [case ${index}]`;
+  const parts = [...(isList ? [`case ${index}`] : []), ...(named !== undefined ? [named] : [])];
+  return parts.length > 0 ? `${path} [${parts.join(' · ')}]` : path;
 }
 
 /** Indexed access on the issue union, rather than importing Zod's internal
@@ -192,6 +188,13 @@ type Issue = z.ZodError['issues'][number];
  * A missing key reports as "expected nonoptional, received undefined", which
  * describes the schema rather than the mistake. The file being validated is
  * hand-written by a human, so the message has to be about their edit.
+ *
+ * Written against zod 4.4.3 (package.json requires ^4.1.12). The `nonoptional`
+ * discriminator is an internal detail of how zod models a missing key, not a
+ * documented API, so a zod upgrade may rename or restructure it. If that
+ * happens this function silently stops rewriting and callers see zod's raw
+ * wording again — degraded, not broken. The two loader tests that assert on
+ * `Required` are what will catch it.
  */
 function describeIssue(issue: Issue): string {
   if (issue.code === 'invalid_type' && issue.expected === 'nonoptional') {
