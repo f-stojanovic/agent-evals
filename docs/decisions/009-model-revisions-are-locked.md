@@ -88,15 +88,14 @@ set.
 That is not a footnote, it is a second consequence of this decision. Pinning
 the model removes one source of drift; nothing removes the run-to-run variance
 that used to be suppressed with a sampling parameter. The only honest response
-left is to measure it, so `llmJudge` declares `minSamples: 3` and the runner
-refuses to start a suite that would sample a judged case fewer times than that.
-A single verdict from a probabilistic grader is an anecdote, and before the
-parameter was removed it was at least a *repeatable* anecdote.
+left is to measure it.
 
-The cost lands on every judged run: three subject samples times three judge
-verdicts is nine calls per judged case, where one used to do. That is the price
-of the platform's change, and it is charged whether or not anyone notices it
-was charged.
+An earlier version of that response was wrong in an instructive way: `llmJudge`
+declared `minSamples: 3`, forcing the runner to sample judged cases at least
+three times as well. [ADR 014](014-judge-and-subject-sampling-are-not-multiplied.md)
+supersedes it — averaging the judge inside a case records a stability
+production does not have. Judge variance is now measured by its own command,
+and it turns out to be small: mean spread 0.031 at k=5.
 
 ## Alternatives rejected
 

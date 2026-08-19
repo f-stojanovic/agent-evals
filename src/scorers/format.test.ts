@@ -58,7 +58,7 @@ describe('formatCompliance', () => {
     const score = await scoreWith('any', proseOutput);
 
     expect(score.value).toBe(0);
-    expect(score.meta?.['via']).toBe('none');
+    expect(score.meta?.['via']).toBe('unreadable');
     expect(score.reason).toContain('no structured payload');
   });
 

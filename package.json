@@ -26,7 +26,8 @@
     "test:watch": "vitest",
     "calibrate": "tsx src/calibrate.ts",
     "eval": "tsx src/cli.ts",
-    "eval:fixture": "tsx src/cli.ts --fixture"
+    "eval:fixture": "tsx src/cli.ts --fixture",
+    "judge:variance": "tsx src/judge-variance.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.117.1",

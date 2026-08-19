@@ -78,11 +78,19 @@ describe('collectUncalibrated', () => {
   it('reports the judge defaults that were left unset', () => {
     const ids = collectUncalibrated([llmJudge({ judge: stubJudgeClient })]).map((c) => c.id);
 
-    expect(ids).toEqual([
-      'llm-judge.disagreementThreshold',
-      'llm-judge.samples',
-      'llm-judge.threshold',
-    ]);
+    /* `samples` is absent: one vote is a reasoned position, not a guess. And
+       `disagreementThreshold` cannot fire at k=1, so it is not declared
+       either — a constant that cannot affect the run is not an assumption the
+       run made. */
+    expect(ids).toEqual(['llm-judge.threshold']);
+  });
+
+  it('declares the disagreement threshold once k makes it reachable', () => {
+    const ids = collectUncalibrated([
+      llmJudge({ judge: stubJudgeClient, samples: 5 }),
+    ]).map((c) => c.id);
+
+    expect(ids).toEqual(['llm-judge.disagreementThreshold', 'llm-judge.threshold']);
   });
 });
 

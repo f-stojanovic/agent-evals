@@ -66,7 +66,7 @@ describe('extractStructured', () => {
        example. Both rules are arbitrary, and an arbitrary rule applied
        silently produces a confident number derived from a coin flip. */
     expect(result).toEqual({
-      via: 'none',
+      via: 'ambiguous',
       error: expect.stringContaining('ambiguous'),
       fenceCount: 2,
     });
@@ -78,14 +78,16 @@ describe('extractStructured', () => {
     );
 
     /* A prose response is a scoring result, not a crash. */
-    expect(result).toEqual({ via: 'none', error: expect.stringContaining('no parseable JSON') });
+    /* `unreadable`, not `ambiguous`: the model produced nothing parseable, which
+       is a fact about the model and gets scored. */
+    expect(result).toEqual({ via: 'unreadable', error: expect.stringContaining('no parseable JSON') });
     expect('error' in result && result.error).toContain('Sure!');
   });
 
   it('reports an empty response', () => {
     const result = extractStructured(subjectOutput({}));
 
-    expect(result).toEqual({ via: 'none', error: expect.stringContaining('no text') });
+    expect(result).toEqual({ via: 'unreadable', error: expect.stringContaining('no text') });
   });
 
   it('treats a literal JSON null as data, not as absence', () => {

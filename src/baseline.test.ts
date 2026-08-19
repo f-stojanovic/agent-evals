@@ -26,7 +26,6 @@ const MODELS: Record<string, LockedModel> = {
 function caseResult(overrides: Partial<CaseResult> & { caseId: string }): CaseResult {
   return {
     status: 'scored',
-    extraction: { via: 'json', data: {} },
     vias: ['json'],
     weight: 1,
     scores: [],
@@ -79,8 +78,8 @@ describe('the derived tolerance', () => {
     expect(noisy).toBeGreaterThan(stable * 10);
   });
 
-  it('fails a small drop on a stable case', () => {
-    const result = suite([caseResult({ caseId: 'stable', value: 0.9, stdDev: 0.01, samples: 5 })]);
+  it('flags a drop on a stable case that a noisy one would absorb', () => {
+    const result = suite([caseResult({ caseId: 'stable', value: 0.88, stdDev: 0.01, samples: 5 })]);
 
     const comparison = compareToBaseline(
       result,
@@ -88,7 +87,6 @@ describe('the derived tolerance', () => {
       MODELS,
     );
 
-    /* A fixed 0.05 tolerance would have let this through. */
     expect(comparison.regressions.map((r) => r.caseId)).toEqual(['stable']);
     expect(comparison.ok).toBe(false);
   });
@@ -107,7 +105,7 @@ describe('the derived tolerance', () => {
   });
 
   it('falls back to the absolute floor when neither side has a spread', () => {
-    const result = suite([caseResult({ caseId: 'once', value: 0.995, samples: 1 })]);
+    const result = suite([caseResult({ caseId: 'once', value: 0.97, samples: 1 })]);
 
     const comparison = compareToBaseline(
       result,
@@ -117,7 +115,9 @@ describe('the derived tolerance', () => {
 
     /* se collapses to 0 with no measured variance, so only the floor is left —
        the degenerate case the doc block calls out. */
-    expect(comparison.comparisons[0]?.tolerance).toBeCloseTo(0.01);
+    /* The floor is the primary term; with no measured spread it is the only
+       one left. */
+    expect(comparison.comparisons[0]?.tolerance).toBeCloseTo(0.05);
     expect(comparison.regressions).toEqual([]);
   });
 

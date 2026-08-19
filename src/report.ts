@@ -140,7 +140,9 @@ export function formatReport({ run, comparison, models }: ReportInput): string {
     '',
     '### Assumptions',
     '',
-    ...formatUncalibratedReport(run.uncalibrated).split('\n').map((line) => line.trimEnd()),
+    ...formatUncalibratedReport([...run.uncalibrated, ...comparison.uncalibrated])
+      .split('\n')
+      .map((line) => line.trimEnd()),
     '',
   );
 

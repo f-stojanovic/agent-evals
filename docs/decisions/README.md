@@ -12,9 +12,10 @@
 | [008](008-embeddings-run-locally.md) | Embeddings run locally | Accepted |
 | [009](009-model-revisions-are-locked.md) | Model revisions are locked | Accepted |
 | [010](010-uncalibrated-constants-are-counted.md) | Uncalibrated constants are counted, not hidden | Accepted |
-| [011](011-the-judge-is-calibrated-against-human-labels.md) | The judge is calibrated against human labels | Accepted, not yet run against a live judge |
+| [011](011-the-judge-is-calibrated-against-human-labels.md) | The judge is calibrated against human labels | Accepted — measured, MAE 0.031 |
 | [012](012-tolerance-is-derived-from-measured-variance.md) | The regression tolerance is derived from measured variance | Accepted |
 | [013](013-ci-splits-fixture-from-live.md) | CI is split between a fixture run and a live run | Accepted |
+| [014](014-judge-and-subject-sampling-are-not-multiplied.md) | Judge sampling and subject sampling are measured separately, not multiplied | Accepted — supersedes the `minSamples: 3` rule |
 
 ## Two axes: Status and Evidence
 
@@ -40,10 +41,12 @@ a reader is entitled to know before deciding how much weight to put on it. Where
 nothing has been observed, the line says what would count — so the gap is a
 piece of work rather than a hole.
 
-Two of these records — [009](009-model-revisions-are-locked.md) and
-[011](011-the-judge-is-calibrated-against-human-labels.md) — argue that a number
-is inadmissible until it has been measured. By their own standard, several
-decisions here are not yet admissible. The Evidence lines say so.
+[011](011-the-judge-is-calibrated-against-human-labels.md) argues that a
+judge's scores are inadmissible until measured. As of 2026-08-19 it has been
+measured — MAE 0.031 over eight labels — and the Evidence line now carries the
+number, along with the fact that a second run of the same set gave 0.019, which
+is itself worth knowing. Several other records are still unverified, and their
+Evidence lines say which.
 
 ## Why this repository keeps decision records
 

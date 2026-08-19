@@ -57,10 +57,30 @@ describe('median', () => {
 });
 
 describe('llmJudge', () => {
+  it('defaults to one verdict, because production votes once', async () => {
+    const judge = fakeJudge([{ score: 0.5 }]);
+
+    await llmJudge({ judge }).score(args());
+
+    /* Averaging k verdicts inside a case would shrink the variance the
+       baseline records below the variance production has. */
+    expect(judge.calls).toHaveLength(1);
+  });
+
+  it('rejects an even sample count', () => {
+    expect(() => llmJudge({ judge: fakeJudge([{}]), samples: 2 })).toThrow(/odd positive integer/);
+  });
+
+  it('declares no minimum sample count for the runner', () => {
+    /* An earlier version set minSamples: 3, which multiplied subject sampling
+       by judge sampling and recorded an artificially stable baseline. */
+    expect(llmJudge({ judge: fakeJudge([{}]) }).minSamples).toBeUndefined();
+  });
+
   it('takes the median, so one wild sample cannot move the score', async () => {
     const judge = fakeJudge([{ score: 0.8 }, { score: 0.8 }, { score: 0.1 }]);
 
-    const score = await llmJudge({ judge }).score(args());
+    const score = await llmJudge({ judge, samples: 3 }).score(args());
 
     /* The mean would be 0.57 — a number describing none of the three
        verdicts. The median describes two of them. */
@@ -79,7 +99,7 @@ describe('llmJudge', () => {
   it('reports high disagreement in the reason rather than averaging it away', async () => {
     const judge = fakeJudge([{ score: 0.9 }, { score: 0.2 }, { score: 0.85 }]);
 
-    const score = await llmJudge({ judge }).score(args());
+    const score = await llmJudge({ judge, samples: 3 }).score(args());
 
     /* A judge that disagrees with itself is reporting that the case is
        ambiguous. That is a finding, not noise to be smoothed. */
@@ -91,7 +111,7 @@ describe('llmJudge', () => {
   it('stays quiet when the samples agree', async () => {
     const judge = fakeJudge([{ score: 0.8 }, { score: 0.82 }, { score: 0.79 }]);
 
-    const score = await llmJudge({ judge }).score(args());
+    const score = await llmJudge({ judge, samples: 3 }).score(args());
 
     expect(score.meta?.['highDisagreement']).toBe(false);
     expect(score.reason).not.toContain('disagreed with itself');
@@ -104,7 +124,9 @@ describe('llmJudge', () => {
 
     /* Grading is usually the most expensive part of a suite, and a cost that
        is invisible does not get optimised. */
-    expect(score.meta?.['judgeUsage']).toEqual({ inputTokens: 300, outputTokens: 60 });
+    /* Typed on Score, not smuggled through meta under an agreed key. */
+    expect(score.judgeUsage).toEqual({ inputTokens: 300, outputTokens: 60 });
+    expect(score.judgeModel).toBe('judge-model');
   });
 
   it('puts the rubric in the system prompt and the output in a delimited user turn', async () => {

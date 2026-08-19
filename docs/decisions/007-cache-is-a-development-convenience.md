@@ -5,9 +5,11 @@ Status: Accepted
 Evidence: Partial. The cache exists and its rules are covered by
           src/runner.test.ts — a hit is reused, a retry bypasses it, and the
           CLI refuses `--cache` in CI or alongside `--update-baseline`. The
-          argument the rules exist to prevent is unobserved: no baseline has
-          ever been recorded from replayed responses, so nothing here has been
-          seen to stay green through a model change it should have caught.
+          live runs of 2026-08-19 ran with it off, as the rules require, so the
+          cache has still never served a response to a real run.
+          The argument the rules exist to prevent remains unobserved: nothing
+          here has been seen to stay green through a model change it should
+          have caught.
 
 ## Context
 

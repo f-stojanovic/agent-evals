@@ -2,16 +2,20 @@
 
 Date: 2026-08-19
 Status: Accepted
-Evidence: Partial, and weaker than it looks. Every resolution route and the
-          multi-fence ambiguity refusal are covered by
-          src/scorers/extract.test.ts. But no real model response has ever been
-          extracted here: the inputs in those tests and the outputs in
-          evals/fixtures/ were hand-authored, not captured from a model. The
-          claim that models scatter payloads across prose, fences and tool
-          calls is drawn from general knowledge, not from anything this
-          repository observed.
-          What would count: a live run whose `via` distribution is not 100%
-          one route.
+Evidence: CONFIRMED BY OBSERVATION, 2026-08-19, and more strongly than
+          expected. A live run of claude-sonnet-5 under a system prompt ending
+          "Reply with the JSON object and nothing else" produced `fenced` on
+          10 of 15 samples and `json` on 5. One case fenced 5/5, another 4/5,
+          a third 0/5 — so the envelope varies both between cases and between
+          samples of the same case.
+          Strict extraction would have scored those ten samples as failures of
+          comprehension. They were failures of envelope, and the two now read
+          as separate columns exactly as this ADR argued.
+          The multi-fence ambiguity path has NOT been observed live: no real
+          response has yet produced two parseable blocks. Its behaviour is
+          covered only by src/scorers/extract.test.ts.
+          Routes and the ambiguity refusal are covered by
+          src/scorers/extract.test.ts; evals/fixtures/ remains hand-authored.
 
 ## Context
 

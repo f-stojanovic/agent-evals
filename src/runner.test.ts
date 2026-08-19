@@ -26,7 +26,9 @@ function fieldScorer(name = 'field', consumesExtraction = true): Scorer {
     consumesExtraction,
     score: ({ extraction }: ScoreArgs): Promise<Score> => {
       const value =
-        extraction.via === 'none' ? 0 : Number((extraction.data as { n?: number }).n ?? 0);
+        extraction.via === 'unreadable' || extraction.via === 'ambiguous'
+          ? 0
+          : Number((extraction.data as { n?: number }).n ?? 0);
       return Promise.resolve({ scorer: name, value, passed: value >= 1 });
     },
   };
@@ -90,7 +92,7 @@ describe('runSuite', () => {
     expect(run.results[0]).not.toHaveProperty('stdDev');
   });
 
-  it('marks a case errored, not zero, when extraction fails', async () => {
+  it('scores an unreadable response 0 and records it, rather than erroring', async () => {
     const run = await runSuite({
       ...base,
       cases: oneCase,
@@ -98,15 +100,17 @@ describe('runSuite', () => {
       scorers: [fieldScorer()],
     });
 
-    /* Zero would assert the model was wrong. We could not read an answer,
-       which is a different claim — and errored cases stay out of the baseline. */
-    expect(run.results[0]?.status).toBe('errored');
-    expect(run.results[0]?.error?.message).toContain('declined to decide');
-    expect(run.totals.errored).toBe(1);
-    expect(run.totals.failed).toBe(0);
+    /* The model was asked for JSON and produced none. That is a fact about the
+       model, so it belongs in the baseline — a format collapse must show up as
+       a score drop on the day it starts, not as an infrastructure error. */
+    expect(run.results[0]?.status).toBe('scored');
+    expect(run.results[0]?.value).toBe(0);
+    expect(run.results[0]?.vias).toEqual(['unreadable']);
+    expect(run.totals.errored).toBe(0);
+    expect(run.totals.failed).toBe(1);
   });
 
-  it('marks a case errored when several fenced blocks parse', async () => {
+  it('errors a case when several fenced blocks parse', async () => {
     const run = await runSuite({
       ...base,
       cases: oneCase,
@@ -117,8 +121,13 @@ describe('runSuite', () => {
       scorers: [fieldScorer()],
     });
 
+    /* Nothing about the model was established — the harness declined to
+       choose. Zero would assert something we did not observe. */
     expect(run.results[0]?.status).toBe('errored');
-    expect(run.results[0]?.extraction.via).toBe('none');
+    expect(run.results[0]?.error?.message).toContain('declined to decide');
+    expect(run.results[0]?.vias).toEqual(['ambiguous']);
+    expect(run.totals.errored).toBe(1);
+    expect(run.totals.failed).toBe(0);
   });
 
   it('does not let a failed extraction stop a scorer that never reads it', async () => {
@@ -134,7 +143,21 @@ describe('runSuite', () => {
     expect(run.results[0]?.value).toBe(1);
   });
 
-  it('refuses to start when samples are below a scorer\'s floor', async () => {
+  it('does not error a case for ambiguity when no scorer reads the extraction', async () => {
+    const run = await runSuite({
+      ...base,
+      cases: oneCase,
+      subject: () =>
+        Promise.resolve(
+          subjectOutput({ text: 'A:\n```json\n{"n":1}\n```\nB:\n```json\n{"n":0}\n```' }),
+        ),
+      scorers: [textScorer()],
+    });
+
+    expect(run.results[0]?.status).toBe('scored');
+  });
+
+  it('refuses to start when samples are below a scorer\'s declared floor', async () => {
     const needsThree: Scorer = { ...fieldScorer(), minSamples: 3 };
 
     await expect(
@@ -301,7 +324,12 @@ describe('runSuite', () => {
     ];
     const subject: Subject = (_input, ctx) =>
       Promise.resolve(
-        subjectOutput({ text: ctx.caseId === 'good' ? '{"n":1}' : 'not json' }),
+        subjectOutput({
+          text:
+            ctx.caseId === 'good'
+              ? '{"n":1}'
+              : 'A:\n```json\n{"n":1}\n```\nB:\n```json\n{"n":0}\n```',
+        }),
       );
 
     const run = await runSuite({ ...base, cases, subject, scorers: [fieldScorer()] });
@@ -394,3 +422,34 @@ describe('cache mode', () => {
 
 /** Kept out of the way of the behavioural tests above. */
 export type _Unused = SubjectOutput;
+
+describe('judge cost through sampling', () => {
+  it('sums judge usage across samples instead of dropping it', async () => {
+    const judging: Scorer = {
+      name: 'judging',
+      claims: [{ key: 'fields', required: true }],
+      consumesExtraction: false,
+      score: (): Promise<Score> =>
+        Promise.resolve({
+          scorer: 'judging',
+          value: 1,
+          passed: true,
+          judgeUsage: { inputTokens: 100, outputTokens: 20 },
+          judgeModel: 'claude-opus-5',
+        }),
+    };
+
+    const run = await runSuite({
+      ...base,
+      cases: oneCase,
+      subject: jsonSubject(1),
+      scorers: [judging],
+      samples: 3,
+    });
+
+    /* Averaging used to drop these, so a run that spent real money on grading
+       reported $0.0000 of judge cost while the per-case totals were right. */
+    expect(run.results[0]?.scores[0]?.judgeUsage).toEqual({ inputTokens: 300, outputTokens: 60 });
+    expect(run.judgeCost?.totalUsd).toBeGreaterThan(0);
+  });
+});

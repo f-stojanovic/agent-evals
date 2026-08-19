@@ -1,20 +1,21 @@
 # 011. The judge is calibrated against human labels
 
 Date: 2026-08-19
-Status: Accepted. The judge and `npm run calibrate` are implemented; the
-calibration has not yet been run against a live judge, so no measured MAE exists.
-Evidence: None. THE JUDGE HAS NEVER BEEN MEASURED. `npm run calibrate` has
-          never been executed against a live judge, so no mean absolute error
-          exists — not a poor one, none. The judge has never called the
-          Anthropic API at all; every verdict in this repository came from a
-          scripted fake or a replayed fixture.
-          The eight labels in evals/calibration/ are one pass by one annotator,
-          unreviewed, and two of them (cal-hallucinated-name-01 at 0.5,
-          cal-prose-not-json-01 at 0.3) are contested judgement calls.
-          So this ADR argues that a judge's scores are inadmissible until
-          measured, and this repository's judge is, by its own standard,
-          inadmissible. What would count: one live calibration run, and a
-          second annotator disagreeing with the labels.
+Status: Accepted, and now measured.
+Evidence: MEASURED, 2026-08-19. `npm run calibrate` against claude-opus-5 over
+          n=8 hand-labelled cases: mean absolute error 0.031, mean signed error
+          +0.006. A second run of the identical set gave MAE 0.019 and signed
+          -0.006 — so the MAE is itself noisy at this n, and the sign of the
+          bias flipped between two runs an hour apart. Read 0.02–0.03 as the
+          figure and treat any claim about its direction as unsupported.
+          Judge self-consistency measured separately (ADR 014): mean spread
+          0.031 at k=5, maximum 0.10, nothing contested.
+          The labels remain ONE PASS BY ONE ANNOTATOR over eight cases, and two
+          of them (cal-hallucinated-name-01, cal-prose-not-json-01) are
+          contested judgement calls — the judge landed 0.10 below the human on
+          the first and matched exactly on the second. An MAE against unreviewed
+          labels measures agreement with one person.
+          What would still count: a second annotator, and more than eight cases.
 
 ## Context
 

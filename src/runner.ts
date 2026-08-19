@@ -19,8 +19,7 @@ import type {
   CaseResult,
   CostBreakdown,
   EvalCase,
-  Extraction,
-  ExtractionRoute,
+  ExtractionOutcome,
   LatencyAggregate,
   Score,
   Scorer,
@@ -168,10 +167,7 @@ function assertSampleFloor(
   if (problems.length > 0) {
     throw new Error(
       `Sample count too low for the registered scorers:\n` +
-        problems.map((p) => `  - ${p}`).join('\n') +
-        `\nA probabilistic scorer sampled once produces an anecdote, not an ` +
-        `estimate, and there is no temperature control left to suppress the ` +
-        `variance with. Raise --samples.`,
+        problems.map((p) => `  - ${p}`).join('\n'),
     );
   }
 }
@@ -207,13 +203,12 @@ async function runCase(args: CaseArgs): Promise<CaseResult> {
   const timer = withTimeout(args.timeoutMs, args.signal);
 
   const sampleValues: number[] = [];
-  const vias: (ExtractionRoute | 'none')[] = [];
+  const vias: ExtractionOutcome[] = [];
   const scoresBySample: Score[][] = [];
   let usage: Usage = { inputTokens: 0, outputTokens: 0 };
   let subjectCost: CostBreakdown | undefined;
   let judgeCost: CostBreakdown | undefined;
   let lastOutput: SubjectOutput | undefined;
-  let lastExtraction: Extraction = { via: 'none', error: 'the case did not run' };
   let failure: { message: string; stack?: string } | undefined;
 
   try {
@@ -227,19 +222,22 @@ async function runCase(args: CaseArgs): Promise<CaseResult> {
          response and deserves its own reading. Within a sample every scorer
          shares it, so three scorers cannot disagree about what was produced. */
       const extraction = extractStructured(output);
-      lastExtraction = extraction;
       vias.push(extraction.via);
 
       const scores: Score[] = [];
       for (const scorer of scorers) {
-        if (extraction.via === 'none' && scorer.consumesExtraction) {
-          /* NOT a zero. Zero asserts the model produced a wrong answer, and
-             we did not establish that — we could not read one. The case is
-             errored, which keeps it out of the baseline entirely. Scorers
-             that do not read the extraction are unaffected and still run:
-             an unparseable payload says nothing about whether the model
-             called the right tool. */
-          throw new ExtractionUnavailable(scorer.name, extraction.error);
+        /* AMBIGUOUS ONLY. Several candidates parsed and the harness declined
+           to choose, so nothing about the model was established and a 0 would
+           assert something we did not observe. The case errors and stays out
+           of the baseline.
+
+           `unreadable` is deliberately NOT handled here. The model was asked
+           for JSON and produced none, which is a fact about the model: the
+           scorers return 0 with a reason and the case is recorded, so the day
+           a subject stops emitting JSON the baseline shows a score drop rather
+           than an infrastructure error nobody can trend. */
+        if (extraction.via === 'ambiguous' && scorer.consumesExtraction) {
+          throw new ExtractionAmbiguous(scorer.name, extraction.error);
         }
         const score = await invokeScorer(scorer, { case: evalCase, output, extraction });
         scores.push(score);
@@ -261,7 +259,6 @@ async function runCase(args: CaseArgs): Promise<CaseResult> {
     return {
       caseId: evalCase.id,
       status: 'errored',
-      extraction: lastExtraction,
       vias,
       weight,
       ...(lastOutput !== undefined && { output: lastOutput }),
@@ -273,7 +270,7 @@ async function runCase(args: CaseArgs): Promise<CaseResult> {
       sampleValues,
       latencyMs,
       usage,
-      ...(subjectCost !== undefined && { cost: subjectCost }),
+      ...(subjectCost !== undefined && { cost: subjectCost, subjectCost }),
     };
   }
 
@@ -283,7 +280,6 @@ async function runCase(args: CaseArgs): Promise<CaseResult> {
   return {
     caseId: evalCase.id,
     status: 'scored',
-    extraction: lastExtraction,
     vias,
     weight,
     ...(lastOutput !== undefined && { output: lastOutput }),
@@ -297,17 +293,19 @@ async function runCase(args: CaseArgs): Promise<CaseResult> {
     usage,
     ...(subjectCost !== undefined && {
       cost: judgeCost === undefined ? subjectCost : addCost(subjectCost, judgeCost),
+      subjectCost,
     }),
   };
 }
 
-/** Signals that a scorer had no payload to read. Carried as an exception
- *  because it must abort the case rather than contribute a number. */
-class ExtractionUnavailable extends Error {
-  override readonly name = 'ExtractionUnavailable';
+/** Signals that several payloads parsed and none could be preferred. Carried
+ *  as an exception because it must abort the case rather than contribute a
+ *  number to it. */
+class ExtractionAmbiguous extends Error {
+  override readonly name = 'ExtractionAmbiguous';
   constructor(scorerName: string, reason: string) {
     super(
-      `scorer "${scorerName}" needs the extracted payload, which could not be read: ` +
+      `scorer "${scorerName}" needs the extracted payload, and it was ambiguous: ` +
         `${reason}. The case is errored rather than scored 0 — we declined to decide, ` +
         `which is not the same as deciding the model was wrong.`,
     );
@@ -514,20 +512,19 @@ function summarise(args: {
     for (const via of result.vias) viaDistribution[via] = (viaDistribution[via] ?? 0) + 1;
   }
 
+  /* Both halves are summed directly from what was recorded. An earlier version
+     derived the subject's share by subtracting the judge's from the total,
+     which meant any scorer whose meta happened to look judge-shaped skewed
+     both numbers at once and in opposite directions. */
   const judgeCost = results.reduce<CostBreakdown | undefined>(
-    (total, r) => r.scores.reduce<CostBreakdown | undefined>((c, s) => mergeCost(c, judgeCostOf(s)), total),
+    (total, r) =>
+      r.scores.reduce<CostBreakdown | undefined>((c, s) => mergeCost(c, judgeCostOf(s)), total),
     undefined,
   );
-  const subjectCost =
-    cost === undefined
-      ? undefined
-      : judgeCost === undefined
-        ? cost
-        : {
-            inputUsd: cost.inputUsd - judgeCost.inputUsd,
-            outputUsd: cost.outputUsd - judgeCost.outputUsd,
-            totalUsd: cost.totalUsd - judgeCost.totalUsd,
-          };
+  const subjectCost = results.reduce<CostBreakdown | undefined>(
+    (total, r) => mergeCost(total, r.subjectCost),
+    undefined,
+  );
 
   return {
     suiteId: args.suiteId,
@@ -564,12 +561,25 @@ function meanScores(scoresBySample: readonly Score[][]): Score[] {
   return first.map((template, index) => {
     const across = scoresBySample.map((scores) => scores[index]).filter(isScore);
     const value = mean(across.map((s) => s.value));
+    /* Judge usage is SUMMED across samples, not carried from the first.
+       Averaging previously dropped these fields entirely, which made the
+       suite report $0.0000 of judge cost on a run that had just spent
+       four cents on grading — the per-case totals were right and the
+       headline was wrong, which is the worst way for a cost number to be
+       broken. */
+    const judgeUsage = across.reduce<Usage | undefined>(
+      (total, s) => (s.judgeUsage === undefined ? total : addUsage(total ?? EMPTY_USAGE, s.judgeUsage)),
+      undefined,
+    );
+    const judgeModel = across.find((s) => s.judgeModel !== undefined)?.judgeModel;
     return {
       scorer: template.scorer,
       value,
       passed: across.every((s) => s.passed),
       ...(template.reason !== undefined && { reason: template.reason }),
       ...(template.meta !== undefined && { meta: template.meta }),
+      ...(judgeUsage !== undefined && { judgeUsage }),
+      ...(judgeModel !== undefined && { judgeModel }),
     };
   });
 }
@@ -610,6 +620,8 @@ export function populationStdDev(values: readonly number[]): number {
   return Math.sqrt(mean(values.map((v) => (v - m) ** 2)));
 }
 
+const EMPTY_USAGE: Usage = { inputTokens: 0, outputTokens: 0 };
+
 function addUsage(a: Usage, b: Usage): Usage {
   const cacheReadTokens = sumOptional(a.cacheReadTokens, b.cacheReadTokens);
   const cacheWriteTokens = sumOptional(a.cacheWriteTokens, b.cacheWriteTokens);
@@ -635,28 +647,12 @@ function mergeCost(
   return addCost(a, b);
 }
 
-/** Judge usage rides in `Score.meta.judgeUsage`, priced against the judge's
- *  own model rather than the subject's. */
+/** Typed fields on `Score`, priced against the judge's own model rather than
+ *  the subject's. */
 function judgeCostOf(score: Score): CostBreakdown | undefined {
-  const usage = score.meta?.['judgeUsage'];
-  const model = score.meta?.['judgeModel'];
-  if (!isUsage(usage)) return undefined;
-  const modelId =
-    typeof model === 'string'
-      ? model
-      : typeof (model as { modelId?: unknown } | undefined)?.modelId === 'string'
-        ? (model as { modelId: string }).modelId
-        : undefined;
-  return modelId === undefined ? ZERO_COST : costOf(usage, modelId);
-}
-
-function isUsage(value: unknown): value is Usage {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    typeof (value as Usage).inputTokens === 'number' &&
-    typeof (value as Usage).outputTokens === 'number'
-  );
+  if (score.judgeUsage === undefined) return undefined;
+  if (score.judgeModel === undefined) return ZERO_COST;
+  return costOf(score.judgeUsage, score.judgeModel);
 }
 
 function flatten(error: unknown): { message: string; stack?: string } {

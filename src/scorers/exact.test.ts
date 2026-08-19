@@ -108,7 +108,7 @@ describe('exactFields', () => {
 
     expect(score.value).toBe(0);
     expect(score.reason).toContain('could not read structured output');
-    expect(score.meta?.['extraction']).toBe('failed');
+    expect(score.meta?.['extraction']).toBe('unreadable');
   });
 
   it('reads a fenced code block', async () => {
@@ -232,7 +232,7 @@ describe('matchesSchema', () => {
     }));
 
     expect(score.value).toBe(0);
-    expect(score.meta?.['extraction']).toBe('failed');
+    expect(score.meta?.['extraction']).toBe('unreadable');
   });
 
   it('accepts an empty schema, which permits anything', async () => {

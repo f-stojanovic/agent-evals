@@ -9,6 +9,8 @@ import { validateExpectations } from './scorers/registry.js';
 import { callsTool, exactFields, matchesSchema } from './scorers/exact.js';
 import { llmJudge } from './scorers/judge.js';
 import { fixtureJudge, fixtureSubject, loadFixtures } from './fixtures.js';
+import { anthropicJudge } from './scorers/judge.js';
+import { SUBJECT_ID, supportExtractionSubject } from './subjects/support-extraction.js';
 import { CACHE_OFF, DEFAULT_CACHE_DIR, runSuite } from './runner.js';
 import {
   baselineFrom,
@@ -19,7 +21,7 @@ import {
 } from './baseline.js';
 import { exitCode, formatReport, writeArtifact } from './report.js';
 import type { LockedModel } from './models-lock.js';
-import type { CacheMode, RunSummary } from './runner.js';
+import type { CacheMode } from './runner.js';
 import type { Scorer, Subject } from './types.js';
 
 export type CliOptions = {
@@ -37,13 +39,24 @@ export function parseArgs(argv: readonly string[]): CliOptions {
   const options: CliOptions = {
     fixture: argv.includes('--fixture'),
     updateBaseline: argv.includes('--update-baseline'),
-    samples: numberFlag(argv, '--samples') ?? 3,
+    /* Five, not three. A stdDev from five draws is a weak estimate and a
+       stdDev from three is barely one, and ADR 012 derives the screen's
+       allowance from exactly that number. */
+    samples: numberFlag(argv, '--samples') ?? 5,
     /* Opt-in, never opt-out. A cache that is on unless disabled is how a
        baseline ends up recorded from replayed responses (ADR 007). */
     cache: argv.includes('--cache'),
     casesDir: stringFlag(argv, '--cases') ?? 'evals/cases',
     fixturesDir: stringFlag(argv, '--fixtures') ?? 'evals/fixtures',
-    baselinePath: stringFlag(argv, '--baseline') ?? 'evals/baseline.json',
+    /* SEPARATE BASELINES, and not for convenience. The fixture run grades with
+       a replaying judge and the live run grades with claude-opus-5, and ADR 009
+       says scores from different judge models are not comparable — so a single
+       file would make one of the two runs fail on a model mismatch every time,
+       correctly and uselessly. Two files, each recorded by the run that owns
+       it. */
+    baselinePath:
+      stringFlag(argv, '--baseline') ??
+      (argv.includes('--fixture') ? 'evals/baseline.fixture.json' : 'evals/baseline.json'),
     concurrency: numberFlag(argv, '--concurrency') ?? 4,
   };
 
@@ -80,14 +93,11 @@ export async function main(argv: readonly string[]): Promise<number> {
   const fixtures = options.fixture ? await loadFixtures(options.fixturesDir) : undefined;
   const subject: Subject = options.fixture
     ? fixtureSubject(fixtures ?? new Map())
-    : notImplementedSubject;
+    : supportExtractionSubject();
 
-  const scorers: Scorer[] = [
-    exactFields(),
-    matchesSchema(),
-    callsTool(),
-    options.fixture ? llmJudge({ judge: fixtureJudge(fixtures ?? new Map()) }) : llmJudge(),
-  ];
+  const judge = options.fixture ? fixtureJudge(fixtures ?? new Map()) : anthropicJudge();
+
+  const scorers: Scorer[] = [exactFields(), matchesSchema(), callsTool(), llmJudge({ judge })];
 
   validateExpectations(cases, scorers);
 
@@ -96,7 +106,7 @@ export async function main(argv: readonly string[]): Promise<number> {
   const run = await runSuite({
     cases,
     subject,
-    subjectId: options.fixture ? 'fixture' : 'live',
+    subjectId: options.fixture ? 'fixture' : SUBJECT_ID,
     scorers,
     samples: options.samples,
     concurrency: options.concurrency,
@@ -104,7 +114,9 @@ export async function main(argv: readonly string[]): Promise<number> {
     suiteId: options.fixture ? 'fixture' : 'live',
   });
 
-  const models = collectModels(run);
+  /* Asked of the judge rather than scraped from scores: a lock the run
+     actually took is the one that belongs in the baseline. */
+  const models: Record<string, LockedModel> = { judge: await judge.locked() };
   const previous = await readBaseline(options.baselinePath);
   const comparison = compareToBaseline(run, previous, models);
 
@@ -121,44 +133,6 @@ export async function main(argv: readonly string[]): Promise<number> {
 
   return exitCode(comparison);
 }
-
-/**
- * Harvests the locked model identities from the scores the run produced.
- *
- * Read off the results rather than asked of the scorers, because a scorer that
- * was registered but never applicable never loaded its model, and recording a
- * model the run did not use would put a false pin in the baseline.
- */
-function collectModels(run: RunSummary): Record<string, LockedModel> {
-  const models: Record<string, LockedModel> = {};
-  for (const result of run.results) {
-    for (const score of result.scores) {
-      const judge = score.meta?.['judgeModel'];
-      if (isLockedModel(judge)) models['judge'] = judge;
-      const embedding = score.meta?.['model'];
-      if (isLockedModel(embedding)) models['embedding'] = embedding;
-    }
-  }
-  return models;
-}
-
-function isLockedModel(value: unknown): value is LockedModel {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    typeof (value as LockedModel).modelId === 'string' &&
-    typeof (value as LockedModel).dtype === 'string'
-  );
-}
-
-const notImplementedSubject: Subject = () =>
-  Promise.reject(
-    new Error(
-      'No live subject is wired up. This repository ships the harness, not a ' +
-        'particular agent: point `runSuite` at your own Subject, or run with ' +
-        '--fixture to exercise the harness against recorded outputs.',
-    ),
-  );
 
 const invokedDirectly =
   process.argv[1] !== undefined &&

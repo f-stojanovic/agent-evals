@@ -5,12 +5,13 @@ Status: Accepted
 Evidence: None for the split; partial for the fixture run. Neither workflow
           has ever executed — this repository has no git remote, so nothing has
           run on GitHub Actions. The fixture eval has only been run locally.
-          The fixtures are also weaker than the code comments claim: they were
-          hand-authored in this repository, not captured from a real model, so
-          the per-push gate currently replays what someone imagined a model
-          produces.
+          The fixtures remain HAND-AUTHORED, not captured from a model, and the
+          live run of 2026-08-19 showed exactly what that costs: the real
+          subject fenced 10 of 15 samples, while every committed fixture is
+          bare JSON. The per-push gate is therefore replaying a format
+          distribution the real subject does not have.
           What would count: one push that runs ci.yml, one nightly eval-live
-          run, and fixtures re-recorded from an actual response.
+          run, and fixtures re-recorded from the artifacts of an actual run.
 
 ## Context
 

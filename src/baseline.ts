@@ -11,7 +11,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { z } from 'zod';
 import type { LockedModel } from './models-lock.js';
-import type { CaseResult, SuiteResult } from './types.js';
+import type { CaseResult, SuiteResult, UncalibratedConstant } from './types.js';
 
 export const BASELINE_PATH = 'evals/baseline.json';
 export const BASELINE_VERSION = 1;
@@ -174,6 +174,8 @@ export type CaseComparison = {
 
 export type BaselineComparison = {
   ok: boolean;
+  /** The screen's own guesses, for the report footer (ADR 010). */
+  uncalibrated: readonly UncalibratedConstant[];
   comparisons: CaseComparison[];
   regressions: CaseComparison[];
   newCases: CaseComparison[];
@@ -192,14 +194,60 @@ export type CompareOptions = {
   readonly floor?: number;
 };
 
+/** How many standard errors of extra allowance a noisy case earns. */
 export const DEFAULT_Z = 2;
-export const DEFAULT_FLOOR = 0.01;
+/**
+ * The primary allowance, in absolute score.
+ *
+ * PRIMARY, not a fallback. At the sample counts this suite actually runs, a
+ * stdDev computed from five draws is a weak estimate of spread, and the
+ * statistical term built on it is a weak signal. The floor is the number doing
+ * most of the deciding; `z·se` widens it for cases that have demonstrably
+ * earned a wider allowance.
+ */
+export const DEFAULT_FLOOR = 0.05;
+
+/** Declared so the report can count them. They are guesses (ADR 010): 2 and
+ *  0.05 are conventions, not measurements. */
+export function screenConstants(options: CompareOptions = {}): UncalibratedConstant[] {
+  return [
+    ...(options.floor === undefined
+      ? [
+          {
+            id: 'baseline.floor',
+            value: DEFAULT_FLOOR,
+            note:
+              'absolute score drop tolerated before a case is flagged. The primary ' +
+              'allowance in the screen, and a convention — nothing measured says a ' +
+              '0.05 drop is acceptable and 0.06 is not.',
+          },
+        ]
+      : []),
+    ...(options.z === undefined
+      ? [
+          {
+            id: 'baseline.z',
+            value: DEFAULT_Z,
+            note:
+              'standard errors of extra allowance granted to a noisy case. Borrowed ' +
+              'from a normal approximation that the underlying data does not satisfy ' +
+              'at n=5; treat it as a widening factor, not a confidence level.',
+          },
+        ]
+      : []),
+  ];
+}
 
 /**
  * Compares a run against the baseline.
  *
- * WHY THE TOLERANCE IS DERIVED RATHER THAN PICKED
- * -----------------------------------------------
+ * A SCREEN, NOT A TEST. The word is chosen and used consistently: nothing here
+ * is a hypothesis test, produces a p-value, or supports a claim of
+ * significance. It is a filter that decides which drops are worth a human's
+ * attention, and it is tuned to be wrong in the cheap direction.
+ *
+ * WHY THE ALLOWANCE IS DERIVED RATHER THAN PICKED
+ * ----------------------------------------------
  * The obvious gate is "fail if a case drops more than 0.05". That number is a
  * guess about how much a case moves on its own, applied uniformly to cases
  * whose real variance differs by an order of magnitude. Set it loose enough
@@ -214,31 +262,33 @@ export const DEFAULT_FLOOR = 0.01;
  *
  *     se = sqrt(baseline.stdDev² / baseline.n + current.stdDev² / current.n)
  *
- * and a case regresses when
+ * and a case is flagged when
  *
- *     current.mean < baseline.mean − z·se − floor
+ *     current.mean < baseline.mean − floor − z·se
  *
- * A case that scores 0.6 ± 0.35 gets a wide allowance because it has earned
- * one; a case that scores 0.95 ± 0.01 gets almost none, and a drop to 0.90
- * fails it — which is the right answer and the one a fixed 0.05 threshold
- * would have missed.
+ * The floor is the primary term and the statistical one is secondary. A case
+ * that scores 0.6 ± 0.35 earns extra room on top of the floor; a case that
+ * scores 0.95 ± 0.01 gets the floor and almost nothing more.
  *
  * WHAT THIS IS NOT
  * ----------------
- * It is not a hypothesis test and it should not be described as one. It
- * assumes per-case scores are roughly normal, which for a bounded 0..1 score
- * that often piles up at the ends is not true. It uses a normal quantile at
- * sample sizes of three or five where a t-distribution would be the textbook
- * choice. It applies no correction for testing every case in the suite at
- * once, so across a hundred cases a few will trip on noise alone. And when a
- * case has never been sampled more than once, `stdDev` is absent, `se`
- * collapses to zero, and the whole thing degenerates to the fixed floor.
+ * At n=5, `stdDev` is estimated from five numbers. That is enough to tell a
+ * case that swings wildly from one that does not, and nowhere near enough to
+ * support a distributional claim. So `z·se` is treated as a secondary signal
+ * — a widening factor for demonstrably noisy cases — and never as a
+ * confidence interval.
  *
- * It is a pragmatic screen that scales its allowance to measured variance
- * instead of guessing one number for the whole suite. That is a real
- * improvement over a constant and it is not rigour. Saying so here is cheaper
- * than having someone discover it from the code and conclude the numbers meant
- * more than they did.
+ * Specifically: it assumes per-case scores are roughly normal, which for a
+ * bounded 0..1 score that piles up at the ends is false. It uses a normal
+ * quantile where a t would be the textbook choice. It applies no correction
+ * for screening every case in the suite at once, so across a hundred cases a
+ * few will trip on noise alone. And with a single sample there is no spread at
+ * all, so only the floor is left.
+ *
+ * It is a screen that scales its allowance to measured variance instead of
+ * guessing one number for the whole suite. That is a real improvement over a
+ * constant and it is not rigour. Saying so here is cheaper than having
+ * somebody infer rigour from the square root.
  */
 export function compareToBaseline(
   result: SuiteResult,
@@ -255,6 +305,7 @@ export function compareToBaseline(
     const comparisons = result.results.map(toNewOrErrored);
     return {
       ok: erroredCases.length === 0,
+      uncalibrated: screenConstants(options),
       comparisons,
       regressions: [],
       newCases: comparisons.filter((c) => c.status === 'new'),
@@ -295,7 +346,8 @@ export function compareToBaseline(
       continue;
     }
 
-    const tolerance = z * standardError(recorded, caseResult) + floor;
+    /* Floor first: it is the term doing most of the deciding. */
+    const tolerance = floor + z * standardError(recorded, caseResult);
     const delta = caseResult.value - recorded.mean;
     const status =
       delta < -tolerance ? 'regressed' : delta > tolerance ? 'improved' : 'unchanged';
@@ -321,6 +373,7 @@ export function compareToBaseline(
     .sort();
 
   return {
+    uncalibrated: screenConstants(options),
     ok:
       regressions.length === 0 &&
       missingCases.length === 0 &&

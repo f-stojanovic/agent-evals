@@ -299,7 +299,7 @@ function selectText(args: {
     );
   }
 
-  if (extraction.via === 'none') {
+  if (extraction.via === 'unreadable' || extraction.via === 'ambiguous') {
     throw new Error(
       `Scorer "${scorerName}": case "${evalCase.id}" declares \`compare: "${compare}"\`, ` +
         `but no structured payload could be read (${extraction.error})`,

@@ -1,42 +1,42 @@
 {
   "version": 1,
-  "recordedAt": "2026-08-19T16:54:10.329Z",
+  "recordedAt": "2026-08-19T17:01:21.856Z",
   "models": {
     "judge": {
-      "modelId": "claude-opus-5",
-      "revision": null,
-      "dtype": "hosted"
+      "modelId": "fixture-judge",
+      "revision": "fixture",
+      "dtype": "replay"
     }
   },
   "cases": {
     "cancellation-or-complaint-01": {
-      "mean": 0.755,
-      "stdDev": 0.024495,
+      "mean": 0.585,
+      "stdDev": 0.03,
       "n": 5,
       "scorers": {
-        "exact-fields": 0.55,
-        "llm-judge": 0.96
+        "exact-fields": 0.5,
+        "llm-judge": 0.67
       }
     },
     "outage-escalation-01": {
-      "mean": 0.75,
+      "mean": 1,
       "stdDev": 0,
       "n": 5,
       "scorers": {
-        "exact-fields": 0.75
+        "exact-fields": 1
       }
     },
     "refund-damaged-item-01": {
-      "mean": 0.75,
+      "mean": 1,
       "stdDev": 0,
       "n": 5,
       "scorers": {
-        "exact-fields": 0.75
+        "exact-fields": 1
       }
     }
   },
   "totals": {
     "cases": 3,
-    "weightedScore": 0.75125
+    "weightedScore": 0.89625
   }
 }

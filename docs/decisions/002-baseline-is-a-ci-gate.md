@@ -2,11 +2,17 @@
 
 Date: 2026-08-19
 Status: Accepted
-Evidence: The gate is verified end to end against a fixture subject — a clean
-          run exits 0, and perturbing one recorded output produces a flagged
-          regression at exit 1. That proves the machinery, not the premise: it
-          has never run against a live model, and no regression has ever been
-          caught in anger here.
+Evidence: Verified live, 2026-08-19. A baseline was recorded from a real
+          claude-sonnet-5 run (3 cases, n=5, weighted 0.751) and a subsequent
+          live run compared clean against it and exited 0 — with per-case
+          deltas of -0.003, +0.000 and +0.000 against a real subject that is
+          not deterministic.
+          The gate has also been seen to fail correctly: the same run against a
+          stale fixture-recorded baseline flagged two regressions and a judge
+          model mismatch, and exited 1. Both directions observed.
+          Still unobserved: a regression caused by an actual change to a
+          prompt or model, as opposed to one manufactured by comparing against
+          the wrong baseline.
           <!-- FILIP: the real evidence for this ADR is your production
                experience with an immutable static-analysis baseline — what it
                caught, over what period, and what the team did before it

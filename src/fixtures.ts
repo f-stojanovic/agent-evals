@@ -136,23 +136,18 @@ export function fixtureSubject(fixtures: Map<string, Fixture>): Subject {
  */
 export function fixtureJudge(fixtures: Map<string, Fixture>, model = 'fixture-judge'): JudgeClient {
   const locked: LockedModel = { modelId: model, revision: 'fixture', dtype: 'replay' };
-  /* The user turn embeds the output under evaluation, which is how a verdict
-     is matched back to its case without threading the case id through the
-     JudgeClient interface. */
+  /* Looked up by case id. An earlier version searched the user turn for the
+     recorded output text, which worked for three fixtures and would have
+     silently cross-matched the moment two cases shared an output. */
   return {
     model,
     locked: () => Promise.resolve(locked),
-    evaluate: ({ user }): Promise<JudgeResponse> => {
-      const fixture = [...fixtures.values()].find(
-        (candidate) =>
-          candidate.judge !== undefined &&
-          candidate.output.text !== undefined &&
-          user.includes(candidate.output.text.trim()),
-      );
+    evaluate: ({ caseId }): Promise<JudgeResponse> => {
+      const fixture = fixtures.get(caseId);
       const verdicts = fixture?.judge;
       if (fixture === undefined || verdicts === undefined || verdicts.length === 0) {
         return Promise.reject(
-          new Error('no recorded judge verdicts matched the output under evaluation'),
+          new Error(`no recorded judge verdicts for case "${caseId}"`),
         );
       }
       const index = counters.get(fixture.caseId) ?? 0;

@@ -60,14 +60,17 @@ export function formatCompliance(options: FormatComplianceOptions = {}): Scorer 
     async score({ case: evalCase, extraction }: ScoreArgs): Promise<Score> {
       const declared = readFormatExpectation(name, evalCase);
 
-      if (extraction.via === 'none') {
+      if (extraction.via === 'unreadable') {
         return {
           scorer: name,
           value: 0,
           passed: false,
           reason: `no structured payload could be found: ${extraction.error}`,
-          meta: { declared, via: 'none' },
+          meta: { declared, via: 'unreadable' },
         };
+      }
+      if (extraction.via === 'ambiguous') {
+        throw new Error(`unreachable: the runner errors ambiguous extractions before scoring`);
       }
 
       const satisfied = satisfies(declared, extraction.via);

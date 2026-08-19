@@ -145,6 +145,28 @@ export const DEFAULT_CASE_WEIGHT = 1;
 export type ExtractionRoute = 'tool-call' | 'json' | 'fenced' | 'scavenged';
 
 /**
+ * Every way a sample's payload can turn out, including the two failures.
+ *
+ * THE TWO FAILURES ARE DIFFERENT FINDINGS AND MUST NOT COLLAPSE.
+ *
+ *   - `unreadable` — the response contained no parseable JSON at all. The model
+ *     demonstrably failed to produce the requested output. That is a fact about
+ *     the model, it scores 0.0 with a reason, and it belongs in the baseline so
+ *     a format collapse shows up as a score drop on the day it starts.
+ *   - `ambiguous` — several fenced blocks each parsed, and there is no
+ *     principled way to choose between them. Nothing about the model was
+ *     established; the harness declined to decide. That is a fact about the
+ *     harness, it errors the case, and it stays out of the baseline.
+ *
+ * "The model was wrong" and "we cannot tell" are the two ends of the axis this
+ * repository exists to measure. An earlier version mapped both onto a single
+ * `none`, which made a total format collapse indistinguishable from a parser
+ * that could not pick a code block — and, worse, kept both out of the
+ * baseline, so the collapse left no trace in the recorded history.
+ */
+export type ExtractionOutcome = ExtractionRoute | 'unreadable' | 'ambiguous';
+
+/**
  * The result of reading structured data out of a response — computed ONCE per
  * case by the runner, then handed to every scorer.
  *
@@ -153,17 +175,14 @@ export type ExtractionRoute = 'tool-call' | 'json' | 'fenced' | 'scavenged';
  * leave open the possibility of two scorers disagreeing about what the model
  * produced. One extraction, one answer, recorded on {@link CaseResult}.
  *
- * `via: 'none'` is the failure arm and carries a human-readable reason.
+ * The two failure arms are distinct on purpose. See {@link ExtractionOutcome}.
  */
 export type Extraction =
   | { via: ExtractionRoute; data: unknown }
-  | {
-      via: 'none';
-      error: string;
-      /** How many fenced blocks parsed as JSON. Present when extraction failed
-       *  because more than one did — see the ambiguity note in extract.ts. */
-      fenceCount?: number;
-    };
+  /** No parseable JSON anywhere. A fact about the model: scored 0, recorded. */
+  | { via: 'unreadable'; error: string }
+  /** Several parseable candidates. A fact about the harness: case errored. */
+  | { via: 'ambiguous'; error: string; fenceCount: number };
 
 /** What a scorer is handed. A named object so adding a field later does not
  *  break every implementor. */
@@ -266,8 +285,23 @@ export type Score = {
   passed: boolean;
   /** Human-readable justification. Populate at least on failure. */
   reason?: string;
-  /** Scorer-specific detail (per-field diffs, judge tokens, rubric split). */
+  /** Scorer-specific detail (per-field diffs, rubric split). Free-form, and
+   *  deliberately not the place for anything the harness itself reads. */
   meta?: Record<string, unknown>;
+  /**
+   * Tokens this scorer spent grading, if it called a model of its own.
+   *
+   * Typed rather than tucked into `meta` under an agreed key. The runner needs
+   * this to separate what grading cost from what the subject cost, and a
+   * convention that the runner reads `meta.judgeUsage` is a contract with no
+   * compiler behind it: any scorer that happened to use the same key name got
+   * counted as judge spend, and any that renamed it silently stopped being
+   * counted at all.
+   */
+  judgeUsage?: Usage;
+  /** Model id that produced {@link Score.judgeUsage}, for pricing it against
+   *  the right rate rather than the subject's. */
+  judgeModel?: string;
 };
 
 /**
@@ -459,13 +493,19 @@ export type CaseResult = {
    * An errored case fails the run on its own path, with its own message.
    */
   status: 'scored' | 'errored';
-  /** The extraction from the LAST sample, for reporting. Per-sample
-   *  extractions are not retained — see {@link CaseResult.sampleValues}. */
-  extraction: Extraction;
-  /** The route each sample's payload arrived by, in draw order. Feeds the
-   *  suite-wide `via` distribution in the report, which is a metric rather
-   *  than an assertion: it describes the run, it does not grade it. */
-  vias: (ExtractionRoute | 'none')[];
+  /**
+   * How each sample's payload turned out, in draw order.
+   *
+   * The only record of extraction on a result. An earlier version also carried
+   * a single `extraction` field holding the LAST sample's — accurate, and an
+   * invitation to read it as the case's. A field whose correct reading depends
+   * on remembering a doc comment is a defect even when the type is right, so
+   * it is gone and this list is the answer.
+   *
+   * Feeds the suite-wide distribution in the report, which is a metric rather
+   * than an assertion: it describes the run, it does not grade it.
+   */
+  vias: ExtractionOutcome[];
   /** Weight actually applied, resolved from the case. Recorded rather than
    *  recomputed so a historical result stays interpretable after the case's
    *  weight is edited. */
@@ -544,7 +584,11 @@ export type CaseResult = {
    *  not simply {@link SubjectOutput.latencyMs}. */
   latencyMs: number;
   usage: Usage;
+  /** Subject and judge combined. */
   cost?: CostBreakdown;
+  /** The subject's share alone, recorded rather than derived by subtracting
+   *  the judge's from the total. */
+  subjectCost?: CostBreakdown;
 };
 
 /**

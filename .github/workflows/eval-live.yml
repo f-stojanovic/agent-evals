@@ -32,7 +32,7 @@ jobs:
     runs-on: ubuntu-latest
     # Forks have no secret, and a run without one fails for a reason unrelated
     # to the subject. Skipping is honest; failing would be noise.
-    if: github.event_name == 'workflow_dispatch' || github.repository_owner == 'filipstojanovic'
+    if: github.event_name == 'workflow_dispatch' || github.repository_owner == 'f-stojanovic'
     steps:
       - uses: actions/checkout@v4
 

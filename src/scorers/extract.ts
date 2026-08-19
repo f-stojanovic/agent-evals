@@ -36,6 +36,14 @@ import type { Extraction, SubjectOutput } from '../types.js';
  * the baseline from the model improving — a silent rewrite of history the gate
  * cannot flag.
  *
+ * TWO KINDS OF FAILURE
+ * --------------------
+ * `unreadable` means no parseable JSON anywhere: the model demonstrably failed
+ * to produce what was asked. `ambiguous` means several candidates parsed and
+ * choosing between them would be a coin flip. Callers treat them differently —
+ * the first is a score, the second is an error — and this function's job is to
+ * report which one happened, not to smooth them together.
+ *
  * WHY THIS NEVER THROWS
  * ---------------------
  * A model returning prose where JSON was expected is a *result*, not an
@@ -52,7 +60,7 @@ export function extractStructured(output: SubjectOutput): Extraction {
   const text = output.text;
   if (text === undefined || text.trim() === '') {
     return {
-      via: 'none',
+      via: 'unreadable',
       error:
         output.toolCalls?.length === 0
           ? 'the subject returned an empty tool call list and no text'
@@ -86,8 +94,12 @@ export function extractStructured(output: SubjectOutput): Extraction {
     .filter((parsed): parsed is { data: unknown } => parsed !== undefined);
 
   if (parseable.length > 1) {
+    /* AMBIGUOUS, not unreadable. Nothing about the model was established here
+       — it produced parseable output and the harness could not choose. That
+       distinction decides whether the case is scored 0 and recorded, or
+       errored and excluded, so the two arms are separate types. */
     return {
-      via: 'none',
+      via: 'ambiguous',
       error:
         `the response contains ${parseable.length} fenced blocks that each parse as ` +
         `JSON, so which one is the answer is ambiguous; constrain the output format ` +
@@ -99,7 +111,14 @@ export function extractStructured(output: SubjectOutput): Extraction {
   const only = parseable[0];
   if (only !== undefined) return { via: 'scavenged', data: only.data };
 
-  return { via: 'none', error: `expected JSON but no parseable JSON was found: ${snippet(text)}` };
+  /* UNREADABLE. The model was asked for JSON and produced none — a fact about
+     the model, not about the harness. It scores 0 and it goes in the baseline,
+     so the day a subject stops emitting JSON the suite shows a score drop
+     rather than quietly reporting an infrastructure error. */
+  return {
+    via: 'unreadable',
+    error: `expected JSON but no parseable JSON was found: ${snippet(text)}`,
+  };
 }
 
 /** A wrapper so a successful parse of the literal `null` stays distinguishable

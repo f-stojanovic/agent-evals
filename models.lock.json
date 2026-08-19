@@ -1,0 +1,7 @@
+{
+  "judge": {
+    "modelId": "claude-opus-5",
+    "revision": null,
+    "dtype": "hosted"
+  }
+}

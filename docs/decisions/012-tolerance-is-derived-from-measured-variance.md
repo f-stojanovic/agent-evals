@@ -2,13 +2,17 @@
 
 Date: 2026-08-19
 Status: Accepted
-Evidence: Partial. src/baseline.test.ts shows the mechanism doing the thing
-          it exists for — the same 0.05 drop fails a stable case and passes a
-          noisy one — but every stdDev in those tests is a number the test
-          supplies. In real runs so far it has never operated on measured
-          variance at all: the fixture subject is deterministic, so every
-          recorded stdDev is 0 and the gate falls back to the fixed floor it
-          was designed to replace.
+Evidence: Partial, and now operating on one real number. The live baseline of
+          2026-08-19 records a genuine per-case spread for the first time: the
+          judged case measured stdDev 0.024 over n=5 and was granted a ±0.082
+          allowance, while the two deterministic cases measured 0.000 and got
+          the ±0.050 floor. The mechanism did what it exists for — a wider
+          allowance where variance was demonstrated — on live data.
+          One noisy case out of three is not a demonstration that the scaling
+          is right, only that it engages. src/baseline.test.ts still supplies
+          every other stdDev it is tested against.
+          What would still count: a suite where the noisy and stable cases
+          disagree about whether a drop is real.
           <!-- FILIP: if you have had a threshold-based gate that flapped until
                someone disabled it, that is the experience this ADR is built
                on. Add what the threshold was and how long it survived. -->

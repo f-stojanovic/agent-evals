@@ -23,8 +23,16 @@ import type {
   Usage,
 } from '../types.js';
 
-/** Verdicts collected per output. Odd by requirement — see {@link llmJudge}. */
-export const DEFAULT_JUDGE_SAMPLES = 3;
+/**
+ * Verdicts collected per output in a normal run. ONE, deliberately.
+ *
+ * See {@link llmJudge} for the argument: averaging the judge across k votes
+ * records a stability production does not have.
+ *
+ * Odd by requirement, and 1 is odd. Raise it with `npm run judge:variance`,
+ * which is where measuring the judge's own spread belongs.
+ */
+export const DEFAULT_JUDGE_SAMPLES = 1;
 /** Spread above which the judge is reported as disagreeing with itself. */
 export const DEFAULT_JUDGE_DISAGREEMENT_THRESHOLD = 0.25;
 /** Median judge score at or above which a case passes. */
@@ -66,7 +74,14 @@ export interface JudgeClient {
    *  judge's numbers are no more comparable across model versions than an
    *  encoder's are — see ADR 009. */
   locked(): Promise<LockedModel>;
-  evaluate(args: { system: string; user: string; signal?: AbortSignal }): Promise<JudgeResponse>;
+  evaluate(args: {
+    system: string;
+    user: string;
+    /** Which case this verdict is for. Carried so a replaying implementation
+     *  can look verdicts up by key instead of matching on the prompt text. */
+    caseId: string;
+    signal?: AbortSignal;
+  }): Promise<JudgeResponse>;
 }
 
 /* ------------------------------------------------------------------ *
@@ -283,21 +298,45 @@ export type LlmJudgeOptions = {
  * Scores `expect.rubric` — the criteria, in prose — against the subject's
  * output, by asking a different model.
  *
- * SELF-CONSISTENCY
- * ----------------
- * The judge is run `samples` times and the MEDIAN is taken. Median rather than
- * mean because the failure mode being defended against is one wild verdict:
- * three samples of 0.8, 0.8, and 0.1 have a mean of 0.57, which describes
- * none of them, and a median of 0.8, which describes two. A mean lets a single
- * outlier move the recorded score by a quarter of the range; a median requires
- * the outliers to be the majority before they can.
+ * JUDGE SAMPLING DEFAULTS TO ONE VOTE, AND THAT IS THE POINT
+ * ---------------------------------------------------------
+ * `samples` is the number of verdicts collected per output, and it defaults to
+ * 1 in a normal run and when recording a baseline.
  *
- * The spread is recorded, not discarded. A judge that returns 0.9 and 0.2 for
- * the same output on the same rubric is telling you something true and
- * important — that the case is genuinely ambiguous, or the rubric does not
- * decide it — and averaging that away converts a finding into a number. High
- * disagreement is surfaced in `reason` so it appears in the report next to the
- * score it undermines.
+ * An earlier version defaulted to 3 and additionally forced the RUNNER to take
+ * at least three subject samples for any judged case, on the reasoning that a
+ * single verdict from a probabilistic grader is an anecdote. Both halves of
+ * that are true and the combination was still wrong, because the two numbers
+ * measure different things and multiplying them gives you neither:
+ *
+ *   - runner samples measure how much the SUBJECT varies run to run.
+ *   - judge k measures how much the JUDGE varies on one fixed output.
+ *
+ * Take k votes and median them inside a case, and what lands in
+ * `sampleValues` is not a draw from the distribution production sees — it is
+ * an average of k draws, and averaging shrinks variance by roughly √k. The
+ * baseline then records a case as more stable than it is. Since ADR 012
+ * derives the regression tolerance from exactly that recorded spread, a
+ * suite that averages its judge issues itself a tolerance too tight to be
+ * met and too flattering to be true, and reports a stability the deployed
+ * system does not have. Production votes once.
+ *
+ * A baseline that looks steadier than production is the worst failure an eval
+ * suite has, because every number downstream inherits the lie and nothing
+ * about it looks wrong.
+ *
+ * Judge variance is still worth measuring — it is just a different question,
+ * asked separately by `npm run judge:variance` against fixed outputs, where
+ * averaging is the goal rather than a contaminant.
+ *
+ * WHEN k > 1, THE MEDIAN IS TAKEN
+ * -------------------------------
+ * Median rather than mean, because the failure mode is one wild verdict:
+ * samples of 0.8, 0.8 and 0.1 have a mean of 0.57, which describes none of
+ * them, and a median of 0.8, which describes two. The spread is recorded
+ * rather than discarded — a judge returning 0.9 and 0.2 for the same output is
+ * reporting that the case is ambiguous, and averaging that away turns a
+ * finding into a number.
  */
 export function llmJudge(options: LlmJudgeOptions = {}): Scorer {
   const name = options.name ?? 'llm-judge';
@@ -326,19 +365,9 @@ export function llmJudge(options: LlmJudgeOptions = {}): Scorer {
   if (concurrency < 1) throw new Error(`Scorer "${name}": concurrency must be at least 1`);
 
   const uncalibrated: UncalibratedConstant[] = [
-    ...(options.samples === undefined
-      ? [
-          {
-            id: `${name}.samples`,
-            value: DEFAULT_JUDGE_SAMPLES,
-            note:
-              'independent verdicts collected per output. Three is the smallest odd ' +
-              'number with a meaningful median; the right number depends on the ' +
-              'observed variance of your rubrics and is worth measuring.',
-          },
-        ]
-      : []),
-    ...(options.disagreementThreshold === undefined
+    /* `samples` is not listed. One vote is a reasoned position — production
+       votes once — rather than a number nobody measured. */
+    ...(options.disagreementThreshold === undefined && samples > 1
       ? [
           {
             id: `${name}.disagreementThreshold`,
@@ -371,9 +400,10 @@ export function llmJudge(options: LlmJudgeOptions = {}): Scorer {
     ],
     /* Grades the response as the user sees it, not the parsed payload. */
     consumesExtraction: false,
-    /* See ADR 009: the platform removed `temperature`, so judge variance
-       cannot be suppressed — only measured. One sample is an anecdote. */
-    minSamples: 3,
+    /* No `minSamples`. An earlier version set 3 here, which forced every
+       judged case to be sampled at least three times at the RUNNER level as
+       well — see the note on judge sampling above for why that made the
+       baseline worse rather than better. */
     uncalibrated,
     async score({ case: evalCase, output }: ScoreArgs): Promise<Score> {
       const rubric = readRubric(name, evalCase);
@@ -390,7 +420,7 @@ export function llmJudge(options: LlmJudgeOptions = {}): Scorer {
       const workers = Array.from({ length: Math.min(concurrency, samples) }, async () => {
         while (next < samples) {
           next += 1;
-          responses.push(await judge.evaluate({ system, user }));
+          responses.push(await judge.evaluate({ system, user, caseId: evalCase.id }));
         }
       });
       await Promise.all(workers);
@@ -436,6 +466,8 @@ export function llmJudge(options: LlmJudgeOptions = {}): Scorer {
             ? ` — WARNING: judged by the same model that produced the output ` +
               `(${judge.model}), so agreement is not evidence`
             : ''),
+        judgeUsage: usage,
+        judgeModel: lockedModel.modelId,
         meta: {
           samples,
           values,
@@ -444,12 +476,7 @@ export function llmJudge(options: LlmJudgeOptions = {}): Scorer {
           highDisagreement: disagrees,
           confidences: verdicts.map((v) => v.confidence),
           reasons: verdicts.map((v) => v.reason),
-          /* Recorded separately from the subject's usage so a report can show
-             what grading cost against what the subject cost. Judge calls are
-             usually the most expensive part of a suite, and a cost that is
-             invisible does not get optimised. */
-          judgeUsage: usage,
-          judgeModel: lockedModel,
+          judgeRevision: lockedModel.revision,
           sameModelAsSubject,
         },
       };

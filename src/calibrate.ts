@@ -241,9 +241,11 @@ export function formatCalibrationReport(report: CalibrationReport): string {
     `  mean absolute error : ${report.meanAbsoluteError.toFixed(3)}`,
     `  mean signed error   : ${(report.meanSignedError >= 0 ? '+' : '') + report.meanSignedError.toFixed(3)}`,
     '',
-    report.meanSignedError > 0
-      ? '  The judge is systematically more generous than the human.'
-      : '  The judge is systematically harsher than the human.',
+    /* A binary generous/harsh verdict on a signed error of +0.006 would be a
+       confident claim about noise. The neutral band is one tenth of the
+       absolute error, so the sentence only fires when the bias is a real
+       fraction of the spread it sits in. */
+    describeBias(report),
     '',
     '  Largest divergences:',
     ...report.worst.map(
@@ -265,6 +267,23 @@ function toUsage(usage: z.infer<typeof usageSchema> | undefined): Usage {
     ...(usage.cacheReadTokens !== undefined && { cacheReadTokens: usage.cacheReadTokens }),
     ...(usage.cacheWriteTokens !== undefined && { cacheWriteTokens: usage.cacheWriteTokens }),
   };
+}
+
+function describeBias(report: CalibrationReport): string {
+  const bias = report.meanSignedError;
+  /* Half the absolute error. Below that the lean is a fraction of the noise it
+     sits in, and naming a direction would be a confident claim about nothing.
+     Observed: two consecutive runs of the same calibration set produced signed
+     errors of +0.006 and -0.006. */
+  if (Math.abs(bias) < report.meanAbsoluteError / 2) {
+    return (
+      `  No systematic bias: the signed error (${bias >= 0 ? '+' : ''}${bias.toFixed(3)}) is ` +
+      `small against the absolute error, so the judge's misses cancel rather than lean.`
+    );
+  }
+  return bias > 0
+    ? '  The judge is systematically more generous than the human.'
+    : '  The judge is systematically harsher than the human.';
 }
 
 function mean(values: readonly number[]): number {

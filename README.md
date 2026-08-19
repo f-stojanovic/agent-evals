@@ -1,7 +1,7 @@
 # agent-evals
 
-[![ci](https://github.com/filipstojanovic/agent-evals/actions/workflows/ci.yml/badge.svg)](https://github.com/filipstojanovic/agent-evals/actions/workflows/ci.yml)
-[![eval-live](https://github.com/filipstojanovic/agent-evals/actions/workflows/eval-live.yml/badge.svg)](https://github.com/filipstojanovic/agent-evals/actions/workflows/eval-live.yml)
+[![ci](https://github.com/f-stojanovic/agent-evals/actions/workflows/ci.yml/badge.svg)](https://github.com/f-stojanovic/agent-evals/actions/workflows/ci.yml)
+[![eval-live](https://github.com/f-stojanovic/agent-evals/actions/workflows/eval-live.yml/badge.svg)](https://github.com/f-stojanovic/agent-evals/actions/workflows/eval-live.yml)
 
 An evaluation harness for LLM agents, in TypeScript. You describe cases in YAML
 — an input, the expectations, a stable id — point it at a subject (an API call,
@@ -56,7 +56,7 @@ const run = await runSuite({
   subject: myAgent,        // (input, ctx) => Promise<SubjectOutput>
   subjectId: 'my-agent@v3',
   scorers,
-  samples: 3,
+  samples: 5,           // a stdDev from five draws is weak; from three, barely one
   cache: CACHE_OFF,        // required: no silent default-on (ADR 007)
 });
 ```
@@ -77,29 +77,55 @@ A case is YAML:
 
 ### What a run looks like
 
+Verbatim from a live run against `claude-sonnet-5`, 2026-08-19, comparing clean
+against its own recorded baseline:
+
 ```
-| case                            | exact-fields | llm-judge | mean  | sd    | Δ vs baseline   | cost | ms |
-| ------------------------------- | ------------ | --------- | ----- | ----- | --------------- | ---- | -- |
-|    cancellation-or-complaint-01 | 0.50         | 0.70      | 0.600 | 0.000 | +0.000 (±0.010) | —    | 1  |
-| 🔴 outage-escalation-01         | 0.75         | —         | 0.750 | 0.014 | -0.250 (±0.031) | —    | 0  |
-|    refund-damaged-item-01       | 1.00         | —         | 1.000 | 0.000 | +0.000 (±0.010) | —    | 0  |
+| case                            | exact-fields | llm-judge | mean  | sd    | Δ vs baseline   | cost    | ms    |
+| ------------------------------- | ------------ | --------- | ----- | ----- | --------------- | ------- | ----- |
+|    cancellation-or-complaint-01 | 0.55         | 0.95      | 0.752 | 0.026 | -0.003 (±0.082) | $0.0741 | 46914 |
+|    outage-escalation-01         | 0.75         | —         | 0.750 | 0.000 | +0.000 (±0.050) | $0.0110 | 13165 |
+|    refund-damaged-item-01       | 0.75         | —         | 0.750 | 0.000 | +0.000 (±0.050) | $0.0092 | 15371 |
 
 ## Totals
 
-- cases: 3 · passed 2 · failed 1 · errored 0
-- weighted score: **0.900**
-- cost: **$0.0413** — subject $0.0090, judge $0.0323
+- cases: 3 · passed 0 · failed 3 · errored 0
+- weighted score: **0.750**
+- latency: p50 15371ms · p95 46914ms · max 46914ms
+- cost: **$0.0943** — subject $0.0448, judge $0.0495
+- tokens: 4605 in / 2021 out
 
 ### Output format distribution
-- json: 9 (100%)
+
+- fenced: 10 (67%)
+- json: 5 (33%)
 
 ### Models
+
 - judge: `claude-opus-5` @ unpinned (hosted)
 
 ### Assumptions
+
 This run used 3 uncalibrated constants:
-  llm-judge.samples = 3 — independent verdicts collected per output. …
+  llm-judge.threshold = 0.7 — median judge score at or above which a case passes. …
+  baseline.floor = 0.05 — absolute score drop tolerated before a case is flagged. …
+  baseline.z = 2 — standard errors of extra allowance granted to a noisy case. …
 ```
+
+Two things in that output are worth reading carefully.
+
+**`passed 0 · failed 3` and the gate still exits 0.** Those are different
+questions. `passed`/`failed` is per-case against each scorer's own threshold —
+`exactFields` defaults to 1.0, so 0.75 "fails". The gate asks a different one:
+did anything get *worse* than the recorded baseline? Nothing did, so exit 0.
+A suite can be usefully green while every case is imperfect, and that is the
+normal state of an eval suite.
+
+**`fenced: 67%`.** The subject's system prompt ends "Reply with the JSON object
+and nothing else", and two thirds of samples came wrapped in a markdown fence
+anyway — one case 5/5, another 4/5, a third 0/5. Strict extraction would have
+scored those as comprehension failures. They are envelope failures, and keeping
+them separate is [ADR 006](docs/decisions/006-extraction-leniency-is-measured.md).
 
 ## An eval that measures nothing must not report green
 
@@ -128,17 +154,28 @@ Annotations that are not expectations go in `meta` — and a `meta` key that
 collides with a claimed one is also an error, with no opt-out switch. A control
 nobody enables is not a control.
 
-## Errored is not failed
+## "The model was wrong" and "we cannot tell" are different findings
 
-A case the harness could not evaluate — no parseable payload, or several that
-each parse and no principled way to choose — is marked **errored**, not scored
-zero. Zero asserts the model was wrong, which was never established; we declined
-to decide, and an invented measurement is worse than a refused one. Errored
-cases are excluded from the baseline entirely and fail the run on their own
-path.
+Extraction can fail two ways, and they are recorded differently.
 
-The blast radius is narrow: only scorers that consume the extraction are
-affected. One reading `output.text` directly still produces a score.
+**`unreadable`** — the response contained no parseable JSON at all. The model
+was asked for JSON and produced none. That is a fact *about the model*, so it
+scores **0.0 with a reason and goes into the baseline** — which means the day a
+subject stops emitting JSON, the suite shows a score drop rather than an
+infrastructure error nobody can trend.
+
+**`ambiguous`** — several fenced blocks each parsed and there is no principled
+way to choose. First-wins scores the model's scratch work; last-wins scores a
+trailing example. Nothing about the model was established, so the case is
+**errored and excluded from the baseline**. An invented measurement is worse
+than a refused one.
+
+Collapsing the two would erase the axis this repository exists to measure. An
+earlier version did exactly that, and a total format collapse would have been
+filed as an infrastructure error and left no trace in the recorded history.
+
+The blast radius of `ambiguous` is narrow: only scorers that consume the
+extraction are affected. One reading `output.text` directly still scores.
 
 ## Judging the judge
 
@@ -149,8 +186,13 @@ part of your pipeline — it moves it one level down and attaches a number to it
 
 So `evals/calibration/` holds cases with human-assigned scores spanning the
 range, each paired with a frozen output. `npm run calibrate` reports mean
-absolute and mean signed error against those labels. A judge at 0.08 MAE is a
-usable instrument; one at 0.35 is a random number generator with good manners.
+absolute and mean signed error against those labels.
+
+**Measured, 2026-08-19: MAE 0.031 over n=8, against `claude-opus-5`.** A second
+run of the identical set gave 0.019, and the sign of the bias flipped between
+them — so read the figure as 0.02–0.03 and treat its direction as unsupported.
+The labels are one pass by one annotator; an MAE against unreviewed labels
+measures agreement with one person.
 
 Three details that matter:
 
@@ -159,9 +201,15 @@ Three details that matter:
   turn.** A security boundary: in a real suite the output derives from customer
   emails and scraped pages, and putting that in the system prompt is a path from
   your own test data to a green build.
-- **k verdicts, median taken, spread recorded.** `temperature` no longer exists
-  on current Claude models, so judge variance cannot be suppressed — only
-  measured. Which is why judged cases require at least three samples.
+- **One verdict per sample, by default.** `temperature` no longer exists on
+  current Claude models, so judge variance cannot be suppressed — only
+  measured. It does not follow that the judge should be averaged inside a case:
+  medianing k verdicts shrinks the variance the baseline records below the
+  variance production has, and the gate derives its allowance from exactly that
+  number. Judge variance gets its own command,
+  `npm run judge:variance`, which holds the output fixed and asks k=5 times.
+  Measured: mean spread 0.031, max 0.10
+  ([ADR 014](docs/decisions/014-judge-and-subject-sampling-are-not-multiplied.md)).
 
 ## Counting the assumptions
 
@@ -206,11 +254,64 @@ overstatement this project exists to prevent.
 - [x] Baseline file and the CI gate, with a tolerance derived from variance
 - [x] Report — markdown and a JSON artifact
 - [x] CI: fixture gate on every push, live run nightly
-- [ ] Live calibration figure — the machinery exists, the number does not yet
+- [x] Live calibration figure — MAE 0.031 over 8 labels
+- [x] First live run against a real subject, baseline recorded from it
 - [ ] Reporters beyond markdown/JSON (GitHub annotations)
 
 Decisions and their reasoning — including one that was wrong and was reversed —
 are in [`docs/decisions/`](docs/decisions/).
+
+## Known limitations
+
+Everything here is true as of the last live run. None of it is hypothetical.
+
+**The example suite is three cases, and its `requested_action` expectations are
+too strict.** All three live cases lose exactly one field, and it is the same
+field every time: the model answers `refund_full_amount` where the case expects
+`issue_refund`, `fix_checkout_api_503_errors` where it expects
+`escalate_to_engineering`. Those are reasonable answers to a free-text field
+being graded by exact string match. The right fix is `semanticSimilarity` on
+that field, and it has not been done — so the recorded baseline of 0.751 is
+partly a measurement of the eval's own case design. It was recorded as observed
+rather than adjusted to flatter the model, which is the point of a baseline,
+but do not read 0.75 as "the model gets a quarter of this wrong".
+
+**The calibration labels are one annotator over eight cases.** The MAE of 0.031
+measures agreement with one person's unreviewed judgement. Two of the eight
+labels are contested judgement calls the author flagged at the time.
+
+**The MAE is itself noisy.** Two runs of the identical calibration set an hour
+apart gave 0.031 and 0.019, and the sign of the bias flipped. At n=8 the figure
+is a range, not a number.
+
+**The committed fixtures are hand-authored, not captured.** The per-push CI gate
+replays bare JSON, while the real subject emits a markdown fence two thirds of
+the time. So the fixture run exercises the harness on a format distribution the
+live subject does not have. Re-recording them from a real run's artifacts is a
+known task, not a subtlety.
+
+**Neither GitHub workflow has ever executed.** There is no remote. Every run in
+this README was local.
+
+**The embedding scorer has never run.** `models.lock.json` has no `embedding`
+entry, the model has never been downloaded, and the one integration test is
+skipped unless `RUN_MODEL_TESTS=1`. Every semantic score ever produced here came
+from a fake embedder.
+
+**The judge model pin is weak.** `claude-opus-5` is a moving target on the
+provider's side: the same id can be served by a different build than last month,
+and nothing local detects that. The lockfile catches somebody changing the id.
+
+**The regression screen is a screen.** At n=5, `stdDev` is estimated from five
+numbers. `z·se` is a widening factor for demonstrably noisy cases, not a
+confidence interval, and there is no correction for screening every case at
+once. It is better than one fixed tolerance for the whole suite and it is not
+statistics.
+
+**No regression caused by an actual change has ever been caught.** The gate has
+been seen to fail correctly against a deliberately stale baseline and to pass
+correctly against a fresh one. Nobody has yet changed a prompt and watched it
+catch the consequence.
 
 ## Development
 

@@ -7,7 +7,6 @@ import type { CaseResult } from './types.js';
 function caseResult(overrides: Partial<CaseResult> & { caseId: string }): CaseResult {
   return {
     status: 'scored',
-    extraction: { via: 'json', data: {} },
     vias: ['json'],
     weight: 1,
     scores: [{ scorer: 'exact-fields', value: 1, passed: true }],
@@ -40,6 +39,7 @@ function run(overrides: Partial<RunSummary> = {}): RunSummary {
 
 const clean: BaselineComparison = {
   ok: true,
+  uncalibrated: [],
   comparisons: [{ caseId: 'a', status: 'unchanged', currentMean: 1, baselineMean: 1, delta: 0, tolerance: 0.01 }],
   regressions: [],
   newCases: [],

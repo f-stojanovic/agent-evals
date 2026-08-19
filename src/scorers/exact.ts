@@ -105,10 +105,17 @@ export function exactFields(options: ExactFieldsOptions = {}): Scorer {
         );
       }
 
-      if (extraction.via === 'none') {
+      if (extraction.via === 'unreadable') {
+        /* Scored, not errored: the model was asked for JSON and produced none,
+           which is a measurable failure and belongs in the baseline. The
+           `ambiguous` arm never reaches a scorer — the runner errors the case
+           before calling one. */
         return fail(name, `could not read structured output: ${extraction.error}`, {
-          extraction: 'failed',
+          extraction: 'unreadable',
         });
+      }
+      if (extraction.via === 'ambiguous') {
+        throw new Error(`unreachable: the runner errors ambiguous extractions before scoring`);
       }
       if (!isRecord(extraction.data)) {
         return fail(name, `expected an object of fields, got ${describeType(extraction.data)}`, {
@@ -238,10 +245,13 @@ export function matchesSchema(options: NamedScorerOptions = {}): Scorer {
         );
       }
 
-      if (extraction.via === 'none') {
+      if (extraction.via === 'unreadable') {
         return fail(name, `could not read structured output: ${extraction.error}`, {
-          extraction: 'failed',
+          extraction: 'unreadable',
         });
+      }
+      if (extraction.via === 'ambiguous') {
+        throw new Error(`unreachable: the runner errors ambiguous extractions before scoring`);
       }
 
       const valid = validate(extraction.data);
