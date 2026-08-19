@@ -88,7 +88,7 @@ mismatch fails the run. It has to — a cosine similarity is only comparable to
 another from the same encoder, so an unnoticed model upgrade shifts every score
 in the suite at once, which is indistinguishable from the subject getting
 worse. The lockfile turns that into a reviewable diff. See
-[ADR 005](docs/decisions/005-models-are-pinned.md).
+[ADR 009](docs/decisions/009-model-revisions-are-locked.md).
 
 The scorer emits **raw cosine similarity**, not a rescaled score. Real
 sentence-embedding similarities do cluster in a narrow band, which makes raw
