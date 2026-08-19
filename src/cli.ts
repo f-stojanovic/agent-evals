@@ -20,6 +20,7 @@ import {
   writeBaseline,
 } from './baseline.js';
 import { exitCode, formatReport, writeArtifact } from './report.js';
+import { summariseProvenance } from './provenance.js';
 import type { LockedModel } from './models-lock.js';
 import type { CacheMode } from './runner.js';
 import type { Scorer, Subject } from './types.js';
@@ -120,8 +121,14 @@ export async function main(argv: readonly string[]): Promise<number> {
   const previous = await readBaseline(options.baselinePath);
   const comparison = compareToBaseline(run, previous, models);
 
-  console.log(formatReport({ run, comparison, models }));
-  const artifact = await writeArtifact({ run, comparison, models });
+  const provenance =
+    fixtures === undefined
+      ? undefined
+      : summariseProvenance('fixtures', [...fixtures.values()]);
+
+  const reportInput = { run, comparison, models, ...(provenance !== undefined && { provenance }) };
+  console.log(formatReport(reportInput));
+  const artifact = await writeArtifact(reportInput);
   console.log(`\nArtifact: ${artifact}`);
 
   if (options.updateBaseline) {

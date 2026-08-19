@@ -39,19 +39,31 @@ every push. "Did the model get worse?" is none of those.
 We run two workflows.
 
 **`ci.yml`** runs on every push and pull request: typecheck, unit tests, and a
-full eval against a fixture subject that replays outputs recorded in
-`evals/fixtures/`. It exercises sampling, extraction, every scorer including
-the judge, the baseline comparison, and the exit code. Deterministic, free, no
-secrets, works on a fork.
+full eval against a fixture subject that replays outputs in `evals/fixtures/`.
+It exercises sampling, extraction, the baseline comparison and the exit code,
+and it runs the scorers the example cases declare — `exactFields` on all three,
+`llmJudge` on the one with a rubric. `matchesSchema` and `callsTool` are
+registered but skipped, because no case declares `schema` or `toolCalls`, and
+`formatCompliance` and `semanticSimilarity` are not registered at all.
+Deterministic, free, no secrets, works on a fork.
 
 **`eval-live.yml`** runs on manual dispatch and nightly, against real models,
 with the cache disabled and the report uploaded as an artifact.
 
-The fixtures are frozen real responses, not hand-written mocks — the same
-device `evals/calibration/` uses to hold the subject still while measuring
-something else. The judge is replayed too, so the self-consistency and
-disagreement paths stay inside the per-push gate rather than being exercised
-only at night.
+The two runs keep separate baselines — `evals/baseline.fixture.json` and
+`evals/baseline.json`. They grade with different judge models, and ADR 009 says
+scores from different judge models are not comparable, so one shared file would
+fail a mismatch check on every run of whichever workflow did not record it.
+
+The fixtures hold the subject still — the same device `evals/calibration/` uses
+while measuring something else. Every one of them is currently hand-authored,
+which each declares in a required `provenance` field and the report prints on
+every run ([ADR 015](015-test-data-provenance-is-typed.md)). An earlier version
+of this paragraph claimed they were captured from a real model; they were not,
+and that sentence contradicted this record's own Evidence line for two commits.
+
+The judge is replayed too, so the self-consistency and disagreement paths stay
+inside the per-push gate rather than being exercised only at night.
 
 ## Consequences
 

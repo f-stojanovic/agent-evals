@@ -146,3 +146,46 @@ describe('exitCode', () => {
     expect(exitCode({ ...clean, ok: false })).toBe(1);
   });
 });
+
+describe('the gate verdict', () => {
+  it('states PASS on its own line, above the tally', () => {
+    const rendered = formatReport({ run: run(), comparison: clean, models: {} });
+
+    /* "passed 0 · failed 3" above an exit code of 0 read as a broken suite.
+       The gate's answer now leads, and the tally is named for what it counts. */
+    expect(rendered).toContain('**GATE: PASS** — no regression against the baseline.');
+    expect(rendered).toContain('below threshold:');
+    expect(rendered).not.toContain('· passed ');
+  });
+
+  it('states FAIL and why', () => {
+    const rendered = formatReport({
+      run: run(),
+      comparison: {
+        ...clean,
+        ok: false,
+        regressions: [{ caseId: 'a', status: 'regressed', currentMean: 0.5 }],
+        missingCases: ['gone'],
+      },
+      models: {},
+    });
+
+    expect(rendered).toContain('**GATE: FAIL** — 1 regression, 1 missing from the suite.');
+  });
+
+  it('reports the extraction route per case, not only suite-wide', () => {
+    const mixed = run({
+      results: [caseResult({ caseId: 'a', vias: ['fenced', 'fenced', 'fenced', 'fenced', 'json'] })],
+    });
+
+    /* The live run fenced 5/5 on one case and 0/5 on another under an
+       identical prompt. A suite total averages that finding away. */
+    expect(formatReport({ run: mixed, comparison: clean, models: {} })).toContain('fenced 4/5, json 1/5');
+  });
+
+  it('collapses a unanimous case to a bare route name', () => {
+    const uniform = run({ results: [caseResult({ caseId: 'a', vias: ['tool-call', 'tool-call'] })] });
+
+    expect(formatReport({ run: uniform, comparison: clean, models: {} })).toContain('| tool-call ');
+  });
+});

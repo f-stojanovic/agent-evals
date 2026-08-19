@@ -17,21 +17,78 @@ import type { Subject, SubjectOutput } from '../types.js';
 
 export const SUBJECT_MODEL = 'claude-sonnet-5';
 
-/** Bumped whenever the prompt changes, because the cache keys on it and a
- *  prompt edit that reuses cached responses records the old prompt's scores. */
-export const SUBJECT_ID = 'support-extraction@1';
+/** Bumped whenever the prompt or schema changes, because the cache keys on it
+ *  and reusing cached responses would record the old subject's scores. */
+export const SUBJECT_ID = 'support-extraction@2';
+
+/**
+ * THE CATEGORICAL FIELDS ARE ENUMS IN A SCHEMA, NOT REQUESTS IN PROSE.
+ *
+ * Version 1 asked for `requested_action` as "a short snake_case verb phrase",
+ * and the first live run lost that field on all three cases while answering
+ * every one of them correctly: `refund_full_amount` for `issue_refund`,
+ * `fix_checkout_api_503_errors` for `escalate_to_engineering`,
+ * `clarify_cancellation_terms` for `explain_cancellation_terms`. The scorer was
+ * working; the task definition was wrong. See ADR 016.
+ *
+ * `intent` and `urgency` were already closed sets, but only in prose — the
+ * prompt listed the values and nothing enforced them. They move here too, so
+ * the set the model may answer from is the set the case is written against.
+ *
+ * `customer_name` stays free text, because it genuinely is.
+ */
+export const INTENTS = [
+  'refund_request',
+  'technical_issue',
+  'cancellation_request',
+  'complaint',
+  'billing_question',
+] as const;
+
+export const URGENCIES = ['low', 'medium', 'high', 'critical'] as const;
+
+export const REQUESTED_ACTIONS = [
+  'issue_refund',
+  'replace_item',
+  'escalate_to_engineering',
+  'explain_cancellation_terms',
+  'request_more_information',
+  'apologise',
+] as const;
+
+const EXTRACT_TOOL: Anthropic.Tool = {
+  name: 'record_extraction',
+  description: 'Record the structured data extracted from the support email.',
+  /* The API validates the input against this schema, so an out-of-set value is
+     rejected at the boundary rather than arriving as a plausible synonym the
+     harness then has to decide about. */
+  strict: true,
+  input_schema: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['intent', 'urgency', 'customer_name', 'requested_action'],
+    properties: {
+      intent: { type: 'string', enum: [...INTENTS] },
+      urgency: {
+        type: 'string',
+        enum: [...URGENCIES],
+        description: 'How fast this needs a human, judged from consequences rather than tone.',
+      },
+      customer_name: {
+        type: 'string',
+        description:
+          'Exactly as it appears in the email. If only an initial and surname are given, ' +
+          'return exactly that. Never invent a first name.',
+      },
+      requested_action: { type: 'string', enum: [...REQUESTED_ACTIONS] },
+    },
+  },
+};
 
 const SYSTEM_PROMPT = `You extract structured data from customer support emails.
 
-Return a JSON object with exactly these keys:
-  intent            one of: refund_request, technical_issue, cancellation_request,
-                    complaint, billing_question
-  urgency           one of: low, medium, high, critical
-  customer_name     exactly as it appears in the email. If only an initial and
-                    surname are given, return exactly that. Never invent a name.
-  requested_action  a short snake_case verb phrase for what the customer wants
-
-Reply with the JSON object and nothing else.`;
+Call record_extraction exactly once with what the email asks for. Choose the
+closest value from each enum; do not explain your choice.`;
 
 export type SupportExtractionOptions = {
   readonly model?: string;
@@ -65,6 +122,8 @@ export function supportExtractionSubject(options: SupportExtractionOptions = {})
         model,
         max_tokens: maxTokens,
         system: SYSTEM_PROMPT,
+        tools: [EXTRACT_TOOL],
+        tool_choice: { type: 'tool', name: EXTRACT_TOOL.name },
         messages: [{ role: 'user', content: renderEmail(input) }],
       },
       { signal: ctx.signal },

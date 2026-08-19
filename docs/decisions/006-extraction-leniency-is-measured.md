@@ -49,7 +49,10 @@ We extract leniently, record how, and score the how separately.
 `extractStructured` resolves in order — tool call input, bare JSON, a fence
 wrapping the whole response, then a fenced block scavenged from prose — and
 returns `via: 'tool-call' | 'json' | 'fenced' | 'scavenged'` alongside the data.
-It runs once per case and the result is recorded on `CaseResult.extraction`.
+It runs once per SAMPLE — each sample is a different response and deserves its
+own reading — and every scorer within a sample shares that one result, so three
+scorers cannot disagree about what the model produced. The routes are recorded
+on `CaseResult.vias`, one per sample.
 
 `formatCompliance` is a separate scorer that grades `via` against the case's
 declared `expect.format` (`tool-call`, `json`, `fenced`, or `any`). A declared
@@ -69,9 +72,9 @@ depends entirely on what consumes the output, so the case author declares it and
 the score is 1 or 0 against that declaration. An earlier version scored `fenced`
 at 0.5, which applied one team's tolerance to everyone (see ADR 010).
 
-The cost is blast radius. Because extraction now runs once per case, an ambiguous
-response — two JSON blocks in prose — fails extraction for *every* scorer on that
-case, not only the format one. `exactFields`, `matchesSchema`, and
+The cost is blast radius. Because every scorer in a sample shares one
+extraction, an ambiguous response — two JSON blocks in prose — fails extraction
+for *every* extraction-consuming scorer on that case, not only the format one. `exactFields`, `matchesSchema`, and
 `semanticSimilarity` all see `via: 'none'` and score 0, so one formatting quirk
 zeroes a case across the board.
 

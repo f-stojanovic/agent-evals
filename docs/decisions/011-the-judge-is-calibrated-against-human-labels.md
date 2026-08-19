@@ -1,7 +1,8 @@
 # 011. The judge is calibrated against human labels
 
 Date: 2026-08-19
-Status: Accepted, and now measured.
+Status: Accepted, and now measured. Its sampling guidance is superseded by 014:
+judge k defaults to 1, not 3.
 Evidence: MEASURED, 2026-08-19. `npm run calibrate` against claude-opus-5 over
           n=8 hand-labelled cases: mean absolute error 0.031, mean signed error
           +0.006. A second run of the identical set gave MAE 0.019 and signed
@@ -52,11 +53,15 @@ the two diverge most.
 The outputs are frozen because otherwise a changed score could mean the judge
 drifted or the subject did, and the measurement would be uninterpretable.
 
-Two supporting decisions follow from the same argument. The judge runs k times and
-we take the **median**, recording the spread — one wild verdict must not move a
-recorded score by a quarter of the range, and a judge that disagrees with itself
-is reporting that the case is ambiguous, which is a finding rather than noise. And
-the judge defaults to a different model than the subject.
+One supporting decision follows from the same argument: the judge defaults to a
+different model than the subject.
+
+A second one has since been reversed. This record originally said the judge runs
+k times per output and the median is taken. It does not, by default —
+[ADR 014](014-judge-and-subject-sampling-are-not-multiplied.md) sets k to 1,
+because medianing k verdicts inside a case records a stability production does
+not have. When k > 1 the median is still what is taken, and judge variance is
+measured by `npm run judge:variance` instead.
 
 ## Consequences
 

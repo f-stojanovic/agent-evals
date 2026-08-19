@@ -36,18 +36,25 @@ import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 import { llmJudge } from './scorers/judge.js';
 import { extractStructured } from './scorers/extract.js';
+import { formatProvenance, provenanceSchema, summariseProvenance, toProvenance } from './provenance.js';
+import type { Provenance, ProvenanceSummary } from './provenance.js';
 import type { EvalCase, Scorer, SubjectOutput, Usage } from './types.js';
 
 /**
  * A case whose correct score is already known, because a human assigned it.
  *
- * The recorded `output` is the whole point: calibration must run the judge
- * against a FIXED output, not against a fresh generation. If the subject were
- * re-run, a changed score could mean the judge drifted or the subject did, and
- * the measurement would be uninterpretable.
+ * The FIXED `output` is the whole point: calibration must run the judge against
+ * an output that does not move, not against a fresh generation. If the subject
+ * were re-run, a changed score could mean the judge drifted or the subject did,
+ * and the measurement would be uninterpretable.
+ *
+ * Fixed is not the same as captured. `provenance` says which — every case here
+ * is currently hand-authored, which means the MAE measures the judge against a
+ * human's labels on a human's invented outputs. See ADR 015.
  */
 export type CalibrationCase = {
   id: string;
+  provenance: Provenance;
   description?: string;
   /** The human's score, 0..1. The reference the judge is measured against. */
   humanScore: number;
@@ -69,6 +76,8 @@ const usageSchema = z.strictObject({
 
 const calibrationCaseSchema = z.strictObject({
   id: z.string().min(1),
+  /* Required, for the same reason it is required on a fixture. */
+  provenance: provenanceSchema,
   description: z.string().optional(),
   humanScore: z.number().min(0).max(1),
   humanReason: z.string().optional(),
@@ -109,6 +118,7 @@ export async function loadCalibrationCases(dir: string): Promise<CalibrationCase
       const parsed = result.data;
       cases.push({
         id: parsed.id,
+        provenance: toProvenance(parsed.provenance),
         humanScore: parsed.humanScore,
         expect: parsed.expect,
         output: {
@@ -200,7 +210,10 @@ export async function calibrate(args: {
   return { results, meanAbsoluteError, meanSignedError, worst };
 }
 
-export function formatCalibrationReport(report: CalibrationReport): string {
+export function formatCalibrationReport(
+  report: CalibrationReport,
+  provenance?: ProvenanceSummary,
+): string {
   const rows = report.results.map((r) => ({
     id: r.caseId,
     human: r.humanScore.toFixed(2),
@@ -251,6 +264,9 @@ export function formatCalibrationReport(report: CalibrationReport): string {
     ...report.worst.map(
       (r) => `    ${r.caseId} (human ${r.humanScore.toFixed(2)}, judge ${r.judgeScore.toFixed(2)}): ${r.judgeReason}`,
     ),
+    /* An MAE is agreement between a judge and a set of labels. Saying where the
+       labels AND the outputs came from is part of reporting the number. */
+    ...(provenance === undefined ? [] : ['', ...formatProvenance(provenance)]),
   ];
 
   return lines.join('\n');
@@ -301,7 +317,7 @@ if (process.argv[1] !== undefined && process.argv[1].endsWith('calibrate.ts')) {
   const cases = await loadCalibrationCases('evals/calibration');
   const scorer = llmJudge();
   const report = await calibrate({ cases, scorer });
-  console.log(formatCalibrationReport(report));
+  console.log(formatCalibrationReport(report, summariseProvenance('calibration set', cases)));
   const { collectUncalibrated, formatUncalibratedReport } = await import('./uncalibrated.js');
   console.log(`\n${formatUncalibratedReport(collectUncalibrated([scorer]))}`);
 }

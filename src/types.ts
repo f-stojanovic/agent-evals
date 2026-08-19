@@ -167,13 +167,14 @@ export type ExtractionRoute = 'tool-call' | 'json' | 'fenced' | 'scavenged';
 export type ExtractionOutcome = ExtractionRoute | 'unreadable' | 'ambiguous';
 
 /**
- * The result of reading structured data out of a response — computed ONCE per
- * case by the runner, then handed to every scorer.
+ * The result of reading structured data out of a response — computed once per
+ * SAMPLE by the runner, then handed to every scorer scoring that sample.
  *
  * It is not a per-scorer concern. Three scorers each re-parsing the same
  * response would store the same `via` three times, cost three parses, and
  * leave open the possibility of two scorers disagreeing about what the model
- * produced. One extraction, one answer, recorded on {@link CaseResult}.
+ * produced. One extraction per sample, one answer, and the routes recorded on
+ * {@link CaseResult.vias}.
  *
  * The two failure arms are distinct on purpose. See {@link ExtractionOutcome}.
  */

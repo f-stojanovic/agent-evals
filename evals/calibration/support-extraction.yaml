@@ -1,12 +1,18 @@
 # Judge calibration set.
 #
-# Each case pairs a FROZEN subject output with a score a human assigned by
-# hand. `npm run calibrate` runs the judge against these same outputs and
-# reports how far it lands from the human labels.
+# Each case pairs a FIXED subject output with a score a human assigned by hand.
+# `npm run calibrate` runs the judge against these same outputs and reports how
+# far it lands from the human labels.
 #
-# The outputs are frozen deliberately: if the subject were re-run, a changed
+# The outputs are fixed deliberately: if the subject were re-run, a changed
 # score could mean the judge drifted or the subject did, and the measurement
 # would be uninterpretable.
+#
+# Fixed is not captured. EVERY OUTPUT BELOW IS HAND-AUTHORED — each carries a
+# required `provenance` field saying so (ADR 015). The measured MAE of 0.031 is
+# therefore agreement between one judge and one annotator on outputs that
+# annotator also invented. Re-recording these from a real run would make the
+# figure mean considerably more.
 #
 # The set spans the range on purpose — two clearly-right, two clearly-wrong,
 # and several borderline. A calibration set of easy cases reports a flattering
@@ -17,6 +23,12 @@
 # `humanReason` is the answer key and is never shown to the judge.
 
 - id: cal-clear-correct-01
+  provenance:
+    kind: hand-authored
+    author: Filip Stojanović
+    note: >
+      Output written by hand to place this case at a chosen point on the
+      score range. Not captured from a model run.
   description: Unambiguous extraction, every field right. The judge should be near 1.
   humanScore: 1.0
   humanReason: >
@@ -36,6 +48,12 @@
       {"intent":"refund_request","urgency":"medium","customer_name":"Maja Petrović","requested_action":"issue_refund"}
 
 - id: cal-clear-wrong-01
+  provenance:
+    kind: hand-authored
+    author: Filip Stojanović
+    note: >
+      Output written by hand to place this case at a chosen point on the
+      score range. Not captured from a model run.
   description: Confidently wrong on every field. The judge should be near 0.
   humanScore: 0.0
   humanReason: >
@@ -56,6 +74,12 @@
       {"intent":"technical_issue","urgency":"low","customer_name":"Tom Weller","requested_action":"escalate_to_engineering"}
 
 - id: cal-partial-three-of-four-01
+  provenance:
+    kind: hand-authored
+    author: Filip Stojanović
+    note: >
+      Output written by hand to place this case at a chosen point on the
+      score range. Not captured from a model run.
   description: Three fields right, urgency overstated. Anchors the middle of the range.
   humanScore: 0.75
   humanReason: >
@@ -77,6 +101,12 @@
       {"intent":"refund_request","urgency":"critical","customer_name":"Maja Petrović","requested_action":"issue_refund"}
 
 - id: cal-hallucinated-name-01
+  provenance:
+    kind: hand-authored
+    author: Filip Stojanović
+    note: >
+      Output written by hand to place this case at a chosen point on the
+      score range. Not captured from a model run.
   description: >
     Invents a first name the email never contained. Tests whether the judge
     penalises fabrication harder than omission, as the rubric demands.
@@ -101,6 +131,12 @@
       {"intent":"cancellation_request","urgency":"high","customer_name":"Aleksandar Novak","requested_action":"explain_cancellation_terms"}
 
 - id: cal-borderline-intent-01
+  provenance:
+    kind: hand-authored
+    author: Filip Stojanović
+    note: >
+      Output written by hand to place this case at a chosen point on the
+      score range. Not captured from a model run.
   description: >
     THE HARD ONE. The ambiguous case from evals/cases — a venting customer who
     asks about cancellation terms without asking to cancel. Two competent
@@ -129,6 +165,12 @@
       {"intent":"complaint","urgency":"medium","customer_name":"A. Novak","requested_action":"explain_cancellation_terms"}
 
 - id: cal-prose-not-json-01
+  provenance:
+    kind: hand-authored
+    author: Filip Stojanović
+    note: >
+      Output written by hand to place this case at a chosen point on the
+      score range. Not captured from a model run.
   description: >
     Correct understanding, wrong format entirely. Tests that the judge grades the
     rubric it was given rather than the property it finds most salient.
@@ -153,6 +195,12 @@
       to issue a refund. I'd treat this as medium urgency.
 
 - id: cal-tool-call-correct-01
+  provenance:
+    kind: hand-authored
+    author: Filip Stojanović
+    note: >
+      Output written by hand to place this case at a chosen point on the
+      score range. Not captured from a model run.
   description: >
     Right answer delivered through a tool call rather than text. Checks that the
     judge does not penalise a compliant path it happens to see less often.
@@ -179,6 +227,12 @@
           requested_action: issue_refund
 
 - id: cal-refused-01
+  provenance:
+    kind: hand-authored
+    author: Filip Stojanović
+    note: >
+      Output written by hand to place this case at a chosen point on the
+      score range. Not captured from a model run.
   description: Model declined to answer. Should be near 0 without being treated as an error.
   humanScore: 0.0
   humanReason: >

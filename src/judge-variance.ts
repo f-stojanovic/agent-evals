@@ -166,4 +166,6 @@ if (process.argv[1] !== undefined && process.argv[1].endsWith('judge-variance.ts
   const cases = await loadCalibrationCases('evals/calibration');
   const scorer = llmJudge({ samples: VARIANCE_SAMPLES });
   console.log(formatJudgeVarianceReport(await measureJudgeVariance({ cases, scorer })));
+  const { formatProvenance, summariseProvenance } = await import('./provenance.js');
+  console.log(`\n${formatProvenance(summariseProvenance('calibration set', cases)).join('\n')}`);
 }

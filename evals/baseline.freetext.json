@@ -1,0 +1,50 @@
+{
+  "_archived": {
+    "what": "The last baseline recorded before `requested_action` was constrained to an enum.",
+    "why_kept": "Evidence for ADR 016. Every case here scores 0.75 or below on exact-fields, and on the first live run all three lost the SAME field: requested_action. The model's answers were correct and differently worded - refund_full_amount for issue_refund, fix_checkout_api_503_errors for escalate_to_engineering, clarify_cancellation_terms for explain_cancellation_terms. A categorical field had been specified as free text, so exact match was grading the case design rather than the model.",
+    "subject": "support-extraction@1 - claude-sonnet-5, JSON in prose, requested_action free text",
+    "recorded": "2026-08-19T16:54:10.329Z",
+    "not_a_live_baseline": "This file is an archive and is deliberately not schema-valid as a baseline: it carries this key, which the strict loader rejects. Nothing compares against it.",
+    "successor": "evals/baseline.json, recorded after the enum constraint. See README 'Before and after'."
+  },
+  "version": 1,
+  "recordedAt": "2026-08-19T16:54:10.329Z",
+  "models": {
+    "judge": {
+      "modelId": "claude-opus-5",
+      "revision": null,
+      "dtype": "hosted"
+    }
+  },
+  "cases": {
+    "cancellation-or-complaint-01": {
+      "mean": 0.755,
+      "stdDev": 0.024495,
+      "n": 5,
+      "scorers": {
+        "exact-fields": 0.55,
+        "llm-judge": 0.96
+      }
+    },
+    "outage-escalation-01": {
+      "mean": 0.75,
+      "stdDev": 0,
+      "n": 5,
+      "scorers": {
+        "exact-fields": 0.75
+      }
+    },
+    "refund-damaged-item-01": {
+      "mean": 0.75,
+      "stdDev": 0,
+      "n": 5,
+      "scorers": {
+        "exact-fields": 0.75
+      }
+    }
+  },
+  "totals": {
+    "cases": 3,
+    "weightedScore": 0.75125
+  }
+}

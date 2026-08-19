@@ -25,6 +25,7 @@ function fixedScorer(scores: Record<string, number>): Scorer {
 
 const calibrationCase = (id: string, humanScore: number): CalibrationCase => ({
   id,
+  provenance: { kind: 'hand-authored', author: 'test' },
   humanScore,
   expect: { rubric: 'anything' },
   output: subjectOutput({ text: 'output' }),
@@ -119,6 +120,19 @@ describe('loadCalibrationCases', () => {
     expect(cases.some((c) => c.humanScore === 0)).toBe(true);
     expect(cases.some((c) => c.humanScore > 0 && c.humanScore < 1)).toBe(true);
     expect(cases.every((c) => typeof c.expect['rubric'] === 'string')).toBe(true);
+  });
+
+  it('requires every case to declare where its output came from', async () => {
+    const dir = fileURLToPath(new URL('../evals/calibration', import.meta.url));
+
+    const cases = await loadCalibrationCases(dir);
+
+    /* Provenance is a required field, so this cannot silently become false by
+       somebody adding a case and not thinking about it. */
+    expect(cases.every((c) => c.provenance !== undefined)).toBe(true);
+    /* Recorded as the truth: these outputs were written by hand, so the MAE is
+       agreement about invented outputs. ADR 015. */
+    expect(cases.every((c) => c.provenance.kind === 'hand-authored')).toBe(true);
   });
 
   it('gives every case a frozen output, so calibration measures only the judge', async () => {

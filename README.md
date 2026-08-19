@@ -33,6 +33,73 @@ The tolerance is not a number somebody picked. Both sides of the comparison are
 noisy estimates with a recorded spread and sample count, so the gate asks "is
 this drop larger than the noise I already measured?" ([ADR 012](docs/decisions/012-tolerance-is-derived-from-measured-variance.md)).
 
+## Before and after: the harness found a specification error
+
+This is the thing this repository actually did, on its first live run.
+
+Three cases, `claude-sonnet-5`, exact-match scoring. Every case lost the same
+field, `requested_action`:
+
+```
+| case                            | exact-fields | llm-judge | mean  | sd    | Δ vs baseline   | cost    | ms    |
+|    cancellation-or-complaint-01 | 0.55         | 0.95      | 0.752 | 0.026 | -0.003 (±0.082) | $0.0741 | 46914 |
+|    outage-escalation-01         | 0.75         | —         | 0.750 | 0.000 | +0.000 (±0.050) | $0.0110 | 13165 |
+|    refund-damaged-item-01       | 0.75         | —         | 0.750 | 0.000 | +0.000 (±0.050) | $0.0092 | 15371 |
+
+- weighted score: 0.750
+- fenced: 10 (67%) · json: 5 (33%)
+```
+
+The model's answers were correct. They were not the case author's words:
+
+| case | expected | model produced |
+| --- | --- | --- |
+| refund-damaged-item-01 | `issue_refund` | `refund_full_amount` |
+| outage-escalation-01 | `escalate_to_engineering` | `fix_checkout_api_503_errors` |
+| cancellation-or-complaint-01 | `explain_cancellation_terms` | `clarify_cancellation_terms` |
+
+`requested_action` had been specified as "a short snake_case verb phrase" — a
+categorical field asked for as free text. Moving it, `intent` and `urgency`
+into the subject's tool schema as enums:
+
+```
+**GATE: PASS** — no regression against the baseline.
+
+| case                            | exact-fields | llm-judge | mean  | sd    | Δ vs baseline   | via       | cost    | ms    |
+| 🟢 cancellation-or-complaint-01 | 0.85         | 0.93      | 0.889 | 0.030 | +0.134 (±0.085) | tool-call | $0.0786 | 39956 |
+| 🟢 outage-escalation-01         | 1.00         | —         | 1.000 | 0.000 | +0.250 (±0.050) | tool-call | $0.0246 | 20002 |
+| 🟢 refund-damaged-item-01       | 1.00         | —         | 1.000 | 0.000 | +0.250 (±0.050) | tool-call | $0.0237 | 20179 |
+
+- weighted score: 0.972
+- tool-call: 15 (100%)
+```
+
+**0.751 → 0.953 recorded.** Same model. Same prompt intent. Same cases. Same
+scorers. Nothing about the model got better and no scoring was loosened.
+
+The number moved because the harness surfaced a defect in the task definition
+on its first live run — and before that run, the number read as a model
+problem. That is the whole argument for running evals against a real subject
+early and recording what comes back, rather than tuning a suite until it looks
+right.
+
+Three things worth stating so the result is not read as better than it is:
+
+- **The residual mismatch is real disagreement, not wording.** One field on one
+  case: `urgency: high` vs `medium` on the deliberately ambiguous case, where
+  `medium` is listed in that case's own `acceptable` set. That is what should
+  be left over.
+- **Two things changed at once.** A tool call also changes how the payload
+  arrives, so the 67%-fenced observation vanished as a side effect of the
+  delivery mechanism, not because formatting improved. The earlier run is
+  preserved in `evals/baseline.freetext.json`.
+- **The recorded numbers move between runs.** Two consecutive runs of the
+  constrained subject scored 0.972 and 0.953. At 0.75 with a systematic wording
+  failure, that variation was invisible underneath the constant error.
+
+The reasoning is [ADR 016](docs/decisions/016-categorical-fields-are-constrained-by-schema.md),
+including why `semanticSimilarity` on that field would have been the wrong fix.
+
 ## Quickstart
 
 ```bash
@@ -75,34 +142,42 @@ A case is YAML:
       urgency: medium
 ```
 
-### What a run looks like
+### What a full run looks like
 
-Verbatim from a live run against `claude-sonnet-5`, 2026-08-19, comparing clean
-against its own recorded baseline:
+Verbatim, current subject, comparing against its own recorded baseline:
 
 ```
-| case                            | exact-fields | llm-judge | mean  | sd    | Δ vs baseline   | cost    | ms    |
-| ------------------------------- | ------------ | --------- | ----- | ----- | --------------- | ------- | ----- |
-|    cancellation-or-complaint-01 | 0.55         | 0.95      | 0.752 | 0.026 | -0.003 (±0.082) | $0.0741 | 46914 |
-|    outage-escalation-01         | 0.75         | —         | 0.750 | 0.000 | +0.000 (±0.050) | $0.0110 | 13165 |
-|    refund-damaged-item-01       | 0.75         | —         | 0.750 | 0.000 | +0.000 (±0.050) | $0.0092 | 15371 |
+# Eval run — live
+
+2026-08-19T18:56:28.445Z · 3 cases · 40.0s
+
+**GATE: PASS** — no regression against the baseline.
+
+| case                            | exact-fields | llm-judge | mean  | sd    | Δ vs baseline   | via       | cost    | ms    |
+| ------------------------------- | ------------ | --------- | ----- | ----- | --------------- | --------- | ------- | ----- |
+| 🟢 cancellation-or-complaint-01 | 0.85         | 0.93      | 0.889 | 0.030 | +0.134 (±0.085) | tool-call | $0.0786 | 39956 |
+| 🟢 outage-escalation-01         | 1.00         | —         | 1.000 | 0.000 | +0.250 (±0.050) | tool-call | $0.0246 | 20002 |
+| 🟢 refund-damaged-item-01       | 1.00         | —         | 1.000 | 0.000 | +0.250 (±0.050) | tool-call | $0.0237 | 20179 |
 
 ## Totals
 
-- cases: 3 · passed 0 · failed 3 · errored 0
-- weighted score: **0.750**
-- latency: p50 15371ms · p95 46914ms · max 46914ms
-- cost: **$0.0943** — subject $0.0448, judge $0.0495
-- tokens: 4605 in / 2021 out
+- cases: 3 · below threshold: 1 of 3 · errored 0
+- weighted score: **0.972**
+- latency: p50 20179ms · p95 39956ms · max 39956ms
+- cost: **$0.1268** — subject $0.0723, judge $0.0545
+- tokens: 15030 in / 1813 out
 
 ### Output format distribution
 
-- fenced: 10 (67%)
-- json: 5 (33%)
+- tool-call: 15 (100%)
 
 ### Models
 
 - judge: `claude-opus-5` @ unpinned (hosted)
+
+### Test data provenance
+
+- live subject: responses came from the model, not from replayed data
 
 ### Assumptions
 
@@ -112,20 +187,18 @@ This run used 3 uncalibrated constants:
   baseline.z = 2 — standard errors of extra allowance granted to a noisy case. …
 ```
 
-Two things in that output are worth reading carefully.
+**`below threshold: 1 of 3` and the gate still passes.** Two different
+questions, so they are printed as two different lines. The tally counts cases
+under each scorer's own cutoff — `exactFields` defaults to 1.0, so 0.85 is
+"below threshold". The gate asks only whether anything got *worse* than the
+baseline. Nothing did, so `GATE: PASS` and exit 0. A suite can be usefully green
+while cases are imperfect; that is the normal state of an eval suite, and an
+earlier version of this report made it look like failure.
 
-**`passed 0 · failed 3` and the gate still exits 0.** Those are different
-questions. `passed`/`failed` is per-case against each scorer's own threshold —
-`exactFields` defaults to 1.0, so 0.75 "fails". The gate asks a different one:
-did anything get *worse* than the recorded baseline? Nothing did, so exit 0.
-A suite can be usefully green while every case is imperfect, and that is the
-normal state of an eval suite.
-
-**`fenced: 67%`.** The subject's system prompt ends "Reply with the JSON object
-and nothing else", and two thirds of samples came wrapped in a markdown fence
-anyway — one case 5/5, another 4/5, a third 0/5. Strict extraction would have
-scored those as comprehension failures. They are envelope failures, and keeping
-them separate is [ADR 006](docs/decisions/006-extraction-leniency-is-measured.md).
+**The `via` column is per case.** Under the free-text subject it read `fenced
+5/5`, `fenced 4/5` and `json 5/5` on three cases sharing one system prompt — the
+envelope tracked the input, not the instruction. A suite-wide total would have
+averaged that away.
 
 ## An eval that measures nothing must not report green
 
@@ -228,10 +301,20 @@ Real model calls on every push would cost money per push, need a secret forks do
 not have, and return a different answer each time. So there are two gates
 ([ADR 013](docs/decisions/013-ci-splits-fixture-from-live.md)):
 
-| workflow | when | what it proves |
-| --- | --- | --- |
-| `ci.yml` | every push and PR | the **harness** works — typecheck, unit tests, and a full eval replaying recorded outputs. Deterministic, free, no secrets, works on forks. |
-| `eval-live.yml` | manual + nightly | the **models** still behave — real API calls, cache disabled, report uploaded. |
+| workflow | when | what it proves | baseline |
+| --- | --- | --- | --- |
+| `ci.yml` | every push and PR | the **harness** works — typecheck, unit tests, and a full eval replaying fixed outputs. Deterministic, free, no secrets, works on forks. | `evals/baseline.fixture.json` |
+| `eval-live.yml` | manual + nightly | the **models** still behave — real API calls, cache disabled, report uploaded. | `evals/baseline.json` |
+
+**Two baseline files, and not for convenience.** The fixture run grades with a
+replaying judge and the live run grades with `claude-opus-5`. Scores from
+different judge models are not comparable ([ADR 009](docs/decisions/009-model-revisions-are-locked.md)),
+so a single file would make one of the two runs fail a model-mismatch check on
+every execution — correctly, and uselessly. Each run owns the baseline it
+records. A third file, `evals/baseline.freetext.json`, is an archive rather than
+a gate: it preserves the pre-enum numbers as the evidence for
+[ADR 016](docs/decisions/016-categorical-fields-are-constrained-by-schema.md)
+and nothing compares against it.
 
 **The per-push gate cannot catch a model regression.** It runs against
 recordings. A model that got worse overnight passes it, and is caught by the
@@ -245,8 +328,11 @@ overstatement this project exists to prevent.
 - [x] Both wiring guards: unclaimed keys, and cases nothing measures
 - [x] Score contract enforcement — finite, 0..1, correctly attributed
 - [x] Extraction with the route recorded; ambiguity refused rather than guessed
-- [x] Scorers: `exactFields`, `matchesSchema`, `callsTool`, `formatCompliance`,
-      `semanticSimilarity`, `llmJudge`
+- [x] Scorers registered by the example suite: `exactFields`, `matchesSchema`,
+      `callsTool`, `llmJudge`
+- [x] Scorers that ship and are tested but that no run has yet invoked —
+      formatCompliance (needs `expect.format` on a case) and semanticSimilarity
+      (needs `expect.similar`, and a downloaded encoder)
 - [x] Judge calibration against human labels (`npm run calibrate`)
 - [x] `models.lock.json` — model changes are explicit and reviewable
 - [x] Runner — concurrency, sampling, retry with jitter, timeouts, disk cache,

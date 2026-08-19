@@ -16,6 +16,9 @@
 | [012](012-tolerance-is-derived-from-measured-variance.md) | The regression tolerance is derived from measured variance | Accepted |
 | [013](013-ci-splits-fixture-from-live.md) | CI is split between a fixture run and a live run | Accepted |
 | [014](014-judge-and-subject-sampling-are-not-multiplied.md) | Judge sampling and subject sampling are measured separately, not multiplied | Accepted — supersedes the `minSamples: 3` rule |
+| [015](015-test-data-provenance-is-typed.md) | Test-data provenance is typed, not described | Accepted |
+| [016](016-categorical-fields-are-constrained-by-schema.md) | Categorical fields are constrained by schema, not requested in prose | Accepted |
+| [017](017-checkable-documentation-claims-are-checked.md) | Documentation claims that can be checked mechanically are checked mechanically | Accepted |
 
 ## Two axes: Status and Evidence
 
@@ -33,6 +36,13 @@ can also be well evidenced and wrong, which is what
 [ADR 004](004-scorers-may-share-an-expectation-key.md) records: the rule it
 supersedes had a written justification and a passing test suite, and the
 justification described a mechanism the system does not have.
+
+Five of these records' claims are now checked by `src/docs.test.ts` on every
+push — dangling doc links, scorers advertised but never registered, undocumented
+baseline files, one-way supersession, and a missing Evidence line
+([ADR 017](017-checkable-documentation-claims-are-checked.md)). What is left for
+a human is what a machine cannot decide: whether an Evidence line is honest and
+whether the reasoning holds.
 
 So the two lines are kept apart deliberately. `Evidence: None.` next to
 `Status: Accepted` is not an admission that the decision is weak; it is a
@@ -61,8 +71,14 @@ constraint because it looks arbitrary. A comment says what a line does. An ADR
 says what would break if you changed it, which is the question someone is
 actually asking when they open the file.
 
-The other reason is that this repository has already been wrong once, on the
-record. [ADR 004](004-scorers-may-share-an-expectation-key.md) documents a rule
+The other reason is that this repository has already been wrong twice, on the
+record, and in different ways.
+[ADR 015](015-test-data-provenance-is-typed.md) is the sharper of the two: a doc
+comment asserted the CI fixtures were captured from a real model when they had
+been written by hand in the same session, and it went unchallenged for three
+commits because nothing about a comment makes it checkable. The fix was not to
+correct the sentence but to make provenance a required typed field the schema
+enforces and the report prints. [ADR 004](004-scorers-may-share-an-expectation-key.md) documents a rule
 that shipped with a written justification which turned out to be false: it
 claimed scorer dispatch was ambiguous when nothing in the system dispatches by
 key at all. The rule was imported wholesale from static analysis, where the

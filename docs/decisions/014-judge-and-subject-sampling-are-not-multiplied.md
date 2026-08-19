@@ -1,7 +1,8 @@
 # 014. Judge sampling and subject sampling are measured separately, not multiplied
 
 Date: 2026-08-19
-Status: Accepted. Supersedes the `minSamples: 3` rule introduced alongside ADR 009.
+Status: Accepted. Supersedes the `minSamples: 3` rule introduced alongside 009,
+and supersedes the k>1 sampling guidance in 011.
 Evidence: The judge's own spread is now measured: `npm run judge:variance` at
           k=5 over eight fixed outputs gives a mean spread of 0.031 and a
           maximum of 0.10, with nothing above the 0.25 disagreement threshold.

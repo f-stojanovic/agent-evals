@@ -15,15 +15,29 @@
  * machinery. The live run against real models is a separate workflow on a
  * schedule (ADR 013).
  *
- * This is not a mock in the testing sense. The recorded outputs are real
- * responses from a real model, frozen — the same trick `evals/calibration/`
- * uses to measure the judge without the subject moving underneath it.
+ * WHERE THE DATA CAME FROM IS A FIELD, NOT A SENTENCE
+ * ---------------------------------------------------
+ * Every fixture carries a required `provenance`. As of this writing all of them
+ * are `hand-authored`, and the report says so on every run.
+ *
+ * This comment used to claim the opposite — "the recorded outputs are real
+ * responses from a real model, frozen" — which was false when it was written
+ * and stayed false for two commits. See ADR 015. The lesson is not that the
+ * comment was careless; it is that a comment is the wrong place to assert a
+ * fact nobody can check from the file.
+ *
+ * Hand-authored fixtures are still worth having: they make the per-push gate
+ * deterministic and free. They just do not exercise the format distribution a
+ * real model produces — the live run of 2026-08-19 emitted a markdown fence on
+ * two thirds of samples, while every fixture here is bare JSON.
  */
 
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
+import { provenanceSchema, toProvenance } from './provenance.js';
+import type { Provenance } from './provenance.js';
 import type { JudgeClient, JudgeResponse } from './scorers/judge.js';
 import type { LockedModel } from './models-lock.js';
 import type { Subject, SubjectOutput } from './types.js';
@@ -36,6 +50,8 @@ const toolCallSchema = z.strictObject({
 
 const fixtureSchema = z.strictObject({
   caseId: z.string().min(1),
+  /* Required. A fixture that does not say where it came from does not load. */
+  provenance: provenanceSchema,
   output: z.strictObject({
     text: z.string().optional(),
     toolCalls: z.array(toolCallSchema).optional(),
@@ -52,6 +68,7 @@ const fixtureSchema = z.strictObject({
 
 export type Fixture = {
   caseId: string;
+  provenance: Provenance;
   output: SubjectOutput;
   judge?: { score: number; reason: string; confidence: number }[];
 };
@@ -80,6 +97,7 @@ export async function loadFixtures(dir: string): Promise<Map<string, Fixture>> {
       const { caseId, output, judge } = parsed.data;
       fixtures.set(caseId, {
         caseId,
+        provenance: toProvenance(parsed.data.provenance),
         output: {
           raw: null,
           model: output.model,

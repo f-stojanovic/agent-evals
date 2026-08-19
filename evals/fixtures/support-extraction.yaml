@@ -1,10 +1,18 @@
-# Recorded subject outputs, replayed by the per-push CI run.
+# Fixed subject outputs, replayed by the per-push CI run.
 #
-# These are frozen responses, not hand-written mocks. Replaying them lets the
-# gate that runs on every push prove the HARNESS works — sampling, extraction,
-# scoring, the baseline comparison, the exit code — without spending money,
-# needing a secret, or returning a different answer each time. Proving the
-# MODEL works is a different job, done by the scheduled live run. See ADR 013.
+# EVERY ENTRY HERE IS HAND-AUTHORED. Each carries a required `provenance` field
+# saying so, and the report prints the tally on every run. An earlier version of
+# this header claimed these were "frozen responses, not hand-written mocks",
+# which was false — see ADR 015 for why that claim is now a typed field rather
+# than a sentence.
+#
+# Replaying them lets the gate that runs on every push prove the HARNESS works —
+# sampling, extraction, scoring, the baseline comparison, the exit code —
+# without spending money, needing a secret, or returning a different answer each
+# time. It does NOT prove the model works, and it does not reproduce the format
+# distribution a real model produces: the live run of 2026-08-19 fenced two
+# thirds of its samples, while everything below is bare JSON. Proving the MODEL
+# works is the scheduled live run's job. See ADR 013.
 #
 # `judge` holds the verdicts the judge returned for this output when it was
 # recorded. Replaying them keeps self-consistency, median selection and the
@@ -12,6 +20,12 @@
 # most likely to break under a refactor.
 
 - caseId: refund-damaged-item-01
+  provenance:
+    kind: hand-authored
+    author: Filip Stojanović
+    note: >
+      Written by hand to exercise the harness deterministically. Not captured
+      from a model run, and not representative of real output formatting.
   output:
     model: subject-model-v1
     inputTokens: 412
@@ -21,6 +35,12 @@
       {"intent":"refund_request","urgency":"medium","customer_name":"Maja Petrović","requested_action":"issue_refund"}
 
 - caseId: outage-escalation-01
+  provenance:
+    kind: hand-authored
+    author: Filip Stojanović
+    note: >
+      Written by hand to exercise the harness deterministically. Not captured
+      from a model run, and not representative of real output formatting.
   output:
     model: subject-model-v1
     inputTokens: 455
@@ -35,6 +55,12 @@
 # differently, and worth keeping in the replay so the disagreement path stays
 # exercised.
 - caseId: cancellation-or-complaint-01
+  provenance:
+    kind: hand-authored
+    author: Filip Stojanović
+    note: >
+      Written by hand to exercise the harness deterministically. Not captured
+      from a model run, and not representative of real output formatting.
   output:
     model: subject-model-v1
     inputTokens: 508

@@ -123,6 +123,9 @@ export { formatReport, writeArtifact, exitCode } from './report.js';
 export { PRICES, priceFor, costOf } from './pricing.js';
 export type { ModelPrice } from './pricing.js';
 
+export { summariseProvenance, formatProvenance, provenanceSchema } from './provenance.js';
+export type { Provenance, ProvenanceSummary } from './provenance.js';
+
 export { loadFixtures, fixtureSubject, fixtureJudge } from './fixtures.js';
 export type { Fixture } from './fixtures.js';
 
