@@ -56,6 +56,7 @@ export function formatCompliance(options: FormatComplianceOptions = {}): Scorer 
   return {
     name,
     claims: [{ key: 'format', required: true }],
+    consumesExtraction: true,
     async score({ case: evalCase, extraction }: ScoreArgs): Promise<Score> {
       const declared = readFormatExpectation(name, evalCase);
 

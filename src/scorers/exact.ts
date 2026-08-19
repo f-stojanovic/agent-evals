@@ -77,6 +77,7 @@ export function exactFields(options: ExactFieldsOptions = {}): Scorer {
   return {
     name,
     claims: [{ key: 'fields', required: true }],
+    consumesExtraction: true,
     /* `async` with nothing awaited: the Scorer contract is async so that a
        deterministic scorer can be swapped for a judge without changing any
        call site. */
@@ -214,6 +215,7 @@ export function matchesSchema(options: NamedScorerOptions = {}): Scorer {
   return {
     name,
     claims: [{ key: 'schema', required: true }],
+    consumesExtraction: true,
     async score({ case: evalCase, extraction }: ScoreArgs): Promise<Score> {
       const schema = readExpectation(name, 'schema', evalCase);
       if (!isRecord(schema) && typeof schema !== 'boolean') {
@@ -307,6 +309,9 @@ export function callsTool(options: CallsToolOptions = {}): Scorer {
   return {
     name,
     claims: [{ key: 'toolCalls', required: true }],
+    /* Reads output.toolCalls directly, so a failed extraction does not
+       prevent it from producing a score. */
+    consumesExtraction: false,
     async score({ case: evalCase, output }: ScoreArgs): Promise<Score> {
       const expected = readExpectedToolCalls(name, evalCase);
       const actual = output.toolCalls ?? [];

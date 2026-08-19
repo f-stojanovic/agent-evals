@@ -1,70 +1,110 @@
-import { beforeEach, describe, expect, it } from 'vitest';
-import {
-  formatUncalibratedReport,
-  resetUncalibratedRegistry,
-  uncalibrated,
-  uncalibratedConstants,
-} from './uncalibrated.js';
+import { describe, expect, it } from 'vitest';
+import { collectUncalibrated, formatUncalibratedReport } from './uncalibrated.js';
+import { llmJudge } from './scorers/judge.js';
+import { exactFields } from './scorers/exact.js';
+import type { Score, ScoreArgs, Scorer, UncalibratedConstant } from './types.js';
 
-beforeEach(() => {
-  resetUncalibratedRegistry();
-});
+function scorerWith(name: string, uncalibrated: UncalibratedConstant[]): Scorer {
+  return {
+    name,
+    claims: [],
+    consumesExtraction: false,
+    uncalibrated,
+    score: (_args: ScoreArgs): Promise<Score> =>
+      Promise.resolve({ scorer: name, value: 1, passed: true }),
+  };
+}
 
-describe('uncalibrated', () => {
-  it('returns the value unchanged, so it can wrap a constant in place', () => {
-    expect(uncalibrated(0.8, 'a-threshold', 'a guess')).toBe(0.8);
-  });
+const stubJudgeClient = {
+  model: 'stub',
+  locked: () => Promise.resolve({ modelId: 'stub', revision: null, dtype: 'hosted' }),
+  evaluate: () =>
+    Promise.resolve({
+      verdict: { score: 1, reason: 'r', confidence: 1 },
+      usage: { inputTokens: 0, outputTokens: 0 },
+      model: 'stub',
+    }),
+};
 
-  it('records what was declared', () => {
-    uncalibrated(0.25, 'spread', 'disagreement cutoff');
-
-    expect(uncalibratedConstants()).toEqual([
-      { id: 'spread', value: 0.25, note: 'disagreement cutoff' },
+describe('collectUncalibrated', () => {
+  it('gathers constants from the registered scorers', () => {
+    const constants = collectUncalibrated([
+      scorerWith('a', [{ id: 'a.t', value: 0.5, note: 'a guess' }]),
+      scorerWith('b', [{ id: 'b.t', value: 0.9, note: 'another' }]),
     ]);
+
+    expect(constants.map((c) => c.id)).toEqual(['a.t', 'b.t']);
   });
 
-  it('counts a repeated declaration once', () => {
-    /* A factory called five times declares the same assumption five times.
-       Reporting it five times would overstate how many there are. */
-    for (let i = 0; i < 5; i += 1) uncalibrated(3, 'judge-samples', 'k');
+  it('sorts by id so the report is stable across runs', () => {
+    const constants = collectUncalibrated([
+      scorerWith('z', [{ id: 'zulu', value: 1, note: 'z' }]),
+      scorerWith('a', [{ id: 'alpha', value: 2, note: 'a' }]),
+    ]);
 
-    expect(uncalibratedConstants()).toHaveLength(1);
+    expect(constants.map((c) => c.id)).toEqual(['alpha', 'zulu']);
   });
 
-  it('throws when one id is declared with two different values', () => {
-    uncalibrated(0.7, 'threshold', 'first');
-
-    /* Otherwise the report would describe at least one of them wrongly. */
-    expect(() => uncalibrated(0.9, 'threshold', 'second')).toThrow(/declared as 0.7/);
+  it('ignores scorers that guess nothing', () => {
+    /* exactFields' threshold of 1 is definitional — exact means exact — not a
+       guess, so it declares none. */
+    expect(collectUncalibrated([exactFields()])).toEqual([]);
   });
 
-  it('sorts the report by id so it is stable across runs', () => {
-    uncalibrated(1, 'zulu', 'z');
-    uncalibrated(2, 'alpha', 'a');
+  it('describes only the run it was given, not every module imported', () => {
+    /* The old global registry counted a constant as soon as its module was
+       imported, so merely importing the judge inflated the count for a run
+       that never used it. */
+    const withoutJudge = collectUncalibrated([exactFields()]);
+    const withJudge = collectUncalibrated([exactFields(), llmJudge({ judge: stubJudgeClient })]);
 
-    expect(uncalibratedConstants().map((c) => c.id)).toEqual(['alpha', 'zulu']);
+    expect(withoutJudge).toHaveLength(0);
+    expect(withJudge.length).toBeGreaterThan(0);
+  });
+
+  it('does not report a constant the caller supplied', () => {
+    const configured = llmJudge({
+      judge: stubJudgeClient,
+      samples: 5,
+      threshold: 0.6,
+      disagreementThreshold: 0.4,
+    });
+
+    /* A threshold the caller chose is the caller's business; reporting it as
+       this scorer's guess would be a lie about who assumed what. */
+    expect(collectUncalibrated([configured])).toEqual([]);
+  });
+
+  it('reports the judge defaults that were left unset', () => {
+    const ids = collectUncalibrated([llmJudge({ judge: stubJudgeClient })]).map((c) => c.id);
+
+    expect(ids).toEqual([
+      'llm-judge.disagreementThreshold',
+      'llm-judge.samples',
+      'llm-judge.threshold',
+    ]);
   });
 });
 
 describe('formatUncalibratedReport', () => {
   it('says plainly when nothing was guessed', () => {
-    expect(formatUncalibratedReport()).toBe('This run used no uncalibrated constants.');
+    expect(formatUncalibratedReport([])).toBe('This run used no uncalibrated constants.');
   });
 
   it('counts and lists the assumptions', () => {
-    uncalibrated(0.8, 'semantic-threshold', 'cosine cutoff, not measured');
-    uncalibrated(3, 'judge-samples', 'verdicts per case');
-
-    const rendered = formatUncalibratedReport();
+    const rendered = formatUncalibratedReport([
+      { id: 'semantic.threshold', value: 0.8, note: 'cosine cutoff, not measured' },
+      { id: 'judge.samples', value: 3, note: 'verdicts per case' },
+    ]);
 
     expect(rendered).toContain('2 uncalibrated constants');
-    expect(rendered).toContain('semantic-threshold = 0.8');
+    expect(rendered).toContain('semantic.threshold = 0.8');
     expect(rendered).toContain('cosine cutoff, not measured');
   });
 
   it('uses the singular for one', () => {
-    uncalibrated(1, 'only', 'one');
-
-    expect(formatUncalibratedReport()).toContain('1 uncalibrated constant:');
+    expect(formatUncalibratedReport([{ id: 'only', value: 1, note: 'one' }])).toContain(
+      '1 uncalibrated constant:',
+    );
   });
 });

@@ -280,8 +280,9 @@ function numberOrZero(value: unknown): number {
    the tests do — never fires an API call. */
 if (process.argv[1] !== undefined && process.argv[1].endsWith('calibrate.ts')) {
   const cases = await loadCalibrationCases('evals/calibration');
-  const report = await calibrate({ cases, scorer: llmJudge() });
+  const scorer = llmJudge();
+  const report = await calibrate({ cases, scorer });
   console.log(formatCalibrationReport(report));
-  const { formatUncalibratedReport } = await import('./uncalibrated.js');
-  console.log(`\n${formatUncalibratedReport()}`);
+  const { collectUncalibrated, formatUncalibratedReport } = await import('./uncalibrated.js');
+  console.log(`\n${formatUncalibratedReport(collectUncalibrated([scorer]))}`);
 }

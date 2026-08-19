@@ -1,0 +1,63 @@
+# Recorded subject outputs, replayed by the per-push CI run.
+#
+# These are frozen responses, not hand-written mocks. Replaying them lets the
+# gate that runs on every push prove the HARNESS works — sampling, extraction,
+# scoring, the baseline comparison, the exit code — without spending money,
+# needing a secret, or returning a different answer each time. Proving the
+# MODEL works is a different job, done by the scheduled live run. See ADR 013.
+#
+# `judge` holds the verdicts the judge returned for this output when it was
+# recorded. Replaying them keeps self-consistency, median selection and the
+# disagreement path inside the per-push gate, which are the parts of the judge
+# most likely to break under a refactor.
+
+- caseId: refund-damaged-item-01
+  output:
+    model: subject-model-v1
+    inputTokens: 412
+    outputTokens: 48
+    latencyMs: 940
+    text: |
+      {"intent":"refund_request","urgency":"medium","customer_name":"Maja Petrović","requested_action":"issue_refund"}
+
+- caseId: outage-escalation-01
+  output:
+    model: subject-model-v1
+    inputTokens: 455
+    outputTokens: 52
+    latencyMs: 1120
+    text: |
+      {"intent":"technical_issue","urgency":"critical","customer_name":"Tom Weller","requested_action":"escalate_to_engineering"}
+
+# The deliberately ambiguous case. The recorded output picks `complaint`, which
+# the case lists under `acceptable`, and the recorded verdicts disagree with
+# each other — which is the correct behaviour on a case two humans would score
+# differently, and worth keeping in the replay so the disagreement path stays
+# exercised.
+- caseId: cancellation-or-complaint-01
+  output:
+    model: subject-model-v1
+    inputTokens: 508
+    outputTokens: 56
+    latencyMs: 1310
+    text: |
+      {"intent":"complaint","urgency":"medium","customer_name":"A. Novak","requested_action":"explain_cancellation_terms"}
+  judge:
+    - score: 0.7
+      confidence: 0.6
+      reason: >
+        Intent `complaint` is listed as defensible and customer_name is exactly
+        "A. Novak" with no invented first name, which is the failure mode the
+        rubric weights most heavily. Urgency `medium` is the acceptable
+        alternative rather than the preferred `high`.
+    - score: 0.6
+      confidence: 0.5
+      reason: >
+        Reads the surface request rather than where the customer is heading.
+        Nothing is fabricated and the requested action is right, so this is a
+        defensible reading rather than a wrong one.
+    - score: 0.75
+      confidence: 0.55
+      reason: >
+        All four fields are defensible under the rubric's own list of accepted
+        alternatives; only the preferred intent and urgency differ.

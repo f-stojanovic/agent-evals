@@ -1,7 +1,7 @@
 # 003. The baseline contains only what a human can review
 
 Date: 2026-08-19
-Status: Accepted, not yet implemented
+Status: Accepted
 
 ## Context
 

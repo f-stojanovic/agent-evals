@@ -339,8 +339,50 @@ export interface Scorer {
    * rather than being a bare key.
    */
   readonly claims: readonly ExpectationClaim[];
+  /**
+   * Whether this scorer reads {@link ScoreArgs.extraction}.
+   *
+   * Extraction runs once per sample and can fail — no parseable payload, or
+   * several that each parse and no principled way to choose. When it does, the
+   * scorers that depend on it have nothing to work with and are marked
+   * errored. Scorers that read `output.text` directly are unaffected and still
+   * produce a score.
+   *
+   * Declared per instance rather than per factory, because it can depend on
+   * configuration: `semanticSimilarity` reads the response text by default and
+   * the extracted payload only when `compare` names a path into it.
+   */
+  readonly consumesExtraction: boolean;
+  /**
+   * Smallest number of samples per case under which this scorer's output is
+   * not worth recording. The runner refuses to start a suite that violates it.
+   *
+   * Exists for the judge. A single verdict from a probabilistic grader is an
+   * anecdote, and there is no longer a `temperature` parameter to suppress the
+   * variance with, so the only honest response is to sample and measure. A
+   * scorer that is deterministic leaves this unset.
+   */
+  readonly minSamples?: number;
+  /**
+   * Constants this scorer uses that are not derived from data.
+   *
+   * Collected by the runner and printed in the report footer, so a reader can
+   * see how much of the number in front of them is convention. Declared per
+   * scorer rather than in a global registry: the constants belong to the
+   * scorer that guesses them, and their lifetime is its lifetime.
+   */
+  readonly uncalibrated?: readonly UncalibratedConstant[];
   score(args: ScoreArgs): Promise<Score>;
 }
+
+/** A constant nobody measured. See {@link Scorer.uncalibrated}. */
+export type UncalibratedConstant = {
+  /** Stable identifier, unique within a scorer. */
+  readonly id: string;
+  readonly value: number;
+  /** What the number does, and what would have to be measured to justify it. */
+  readonly note: string;
+};
 
 /**
  * Cost in USD, derived from {@link Usage} and a price table.
@@ -402,9 +444,28 @@ export type SuiteTotals = {
  */
 export type CaseResult = {
   caseId: string;
-  /** Computed once by the runner and shared with every scorer. See
-   *  {@link Extraction}. */
+  /**
+   * `scored` means every applicable scorer produced a number and the case
+   * belongs in the baseline. `errored` means at least one did not, and the
+   * case is excluded from the baseline entirely.
+   *
+   * The distinction is not cosmetic. Recording 0.0 for a case the harness
+   * could not evaluate asserts that the model was wrong, which is a claim we
+   * did not establish — we declined to decide. An invented measurement is
+   * worse than a refused one, because it enters the baseline, drags the suite
+   * mean, and is indistinguishable six months later from a case the model
+   * genuinely failed.
+   *
+   * An errored case fails the run on its own path, with its own message.
+   */
+  status: 'scored' | 'errored';
+  /** The extraction from the LAST sample, for reporting. Per-sample
+   *  extractions are not retained — see {@link CaseResult.sampleValues}. */
   extraction: Extraction;
+  /** The route each sample's payload arrived by, in draw order. Feeds the
+   *  suite-wide `via` distribution in the report, which is a metric rather
+   *  than an assertion: it describes the run, it does not grade it. */
+  vias: (ExtractionRoute | 'none')[];
   /** Weight actually applied, resolved from the case. Recorded rather than
    *  recomputed so a historical result stays interpretable after the case's
    *  weight is edited. */

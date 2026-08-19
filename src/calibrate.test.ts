@@ -11,6 +11,7 @@ function fixedScorer(scores: Record<string, number>): Scorer {
   return {
     name: 'fixed',
     claims: [{ key: 'rubric', required: true }],
+    consumesExtraction: false,
     score: ({ case: evalCase }: ScoreArgs): Promise<Score> =>
       Promise.resolve({
         scorer: 'fixed',

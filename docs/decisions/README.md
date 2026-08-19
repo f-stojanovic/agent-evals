@@ -3,16 +3,18 @@
 | ADR | Decision | Status |
 | --- | --- | --- |
 | [001](001-scores-are-continuous.md) | Scores are continuous, not boolean | Accepted |
-| [002](002-baseline-is-a-ci-gate.md) | The baseline is immutable and enforced as a CI gate | Accepted, not yet implemented |
-| [003](003-baseline-contains-only-reviewable-data.md) | The baseline contains only what a human can review | Accepted, not yet implemented |
+| [002](002-baseline-is-a-ci-gate.md) | The baseline is immutable and enforced as a CI gate | Accepted |
+| [003](003-baseline-contains-only-reviewable-data.md) | The baseline contains only what a human can review | Accepted |
 | [004](004-scorers-may-share-an-expectation-key.md) | Scorers may share an expectation key | Accepted — supersedes the one-owner rule, which was wrong |
 | [005](005-two-guards-against-a-suite-that-measures-nothing.md) | Two guards against a suite that measures nothing | Accepted |
 | [006](006-extraction-leniency-is-measured.md) | Extraction leniency is measured, not chosen | Accepted |
-| [007](007-cache-is-a-development-convenience.md) | The cache is a development convenience, not a source of truth | Accepted, not yet implemented |
+| [007](007-cache-is-a-development-convenience.md) | The cache is a development convenience, not a source of truth | Accepted |
 | [008](008-embeddings-run-locally.md) | Embeddings run locally | Accepted |
-| [009](009-model-revisions-are-locked.md) | Model revisions are locked | Accepted — embedding slot only |
+| [009](009-model-revisions-are-locked.md) | Model revisions are locked | Accepted |
 | [010](010-uncalibrated-constants-are-counted.md) | Uncalibrated constants are counted, not hidden | Accepted |
 | [011](011-the-judge-is-calibrated-against-human-labels.md) | The judge is calibrated against human labels | Accepted, not yet run against a live judge |
+| [012](012-tolerance-is-derived-from-measured-variance.md) | The regression tolerance is derived from measured variance | Accepted |
+| [013](013-ci-splits-fixture-from-live.md) | CI is split between a fixture run and a live run | Accepted |
 
 ## Why this repository keeps decision records
 

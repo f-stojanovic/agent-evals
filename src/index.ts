@@ -17,6 +17,7 @@ export type {
   Scorer,
   ScoreArgs,
   ExpectationClaim,
+  UncalibratedConstant,
   Extraction,
   ExtractionRoute,
   CostBreakdown,
@@ -99,13 +100,31 @@ export {
 } from './models-lock.js';
 export type { ModelsLock, LockedModel, RevisionResolver } from './models-lock.js';
 
+export { collectUncalibrated, formatUncalibratedReport } from './uncalibrated.js';
+
+export { runSuite, mapWithConcurrency, isRetryable, backoffMs, CACHE_OFF } from './runner.js';
+export type { RunOptions, RunSummary, CacheMode } from './runner.js';
+
 export {
-  uncalibrated,
-  uncalibratedConstants,
-  formatUncalibratedReport,
-  resetUncalibratedRegistry,
-} from './uncalibrated.js';
-export type { UncalibratedConstant } from './uncalibrated.js';
+  readBaseline,
+  writeBaseline,
+  baselineFrom,
+  compareToBaseline,
+  describeBaselineChange,
+  standardError,
+  BASELINE_PATH,
+  DEFAULT_Z,
+  DEFAULT_FLOOR,
+} from './baseline.js';
+export type { Baseline, BaselineCase, BaselineComparison, CaseComparison } from './baseline.js';
+
+export { formatReport, writeArtifact, exitCode } from './report.js';
+
+export { PRICES, priceFor, costOf } from './pricing.js';
+export type { ModelPrice } from './pricing.js';
+
+export { loadFixtures, fixtureSubject, fixtureJudge } from './fixtures.js';
+export type { Fixture } from './fixtures.js';
 
 /* Fixture builders are API, not test scaffolding. See src/testing.ts. */
 export { subjectOutput, evalCase, subjectContext, scoreArgs } from './testing.js';

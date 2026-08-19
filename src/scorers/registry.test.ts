@@ -9,6 +9,7 @@ function stubScorer(name: string, claims: readonly ExpectationClaim[]): Scorer {
   return {
     name,
     claims,
+    consumesExtraction: false,
     score: (): Promise<Score> => Promise.resolve({ scorer: name, value: 1, passed: true }),
   };
 }

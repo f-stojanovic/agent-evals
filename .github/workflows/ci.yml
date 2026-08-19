@@ -1,0 +1,46 @@
+name: ci
+
+# Runs on every push and pull request. Deterministic, free, no secrets, works
+# on a fork. It proves the HARNESS works — it does not touch a model.
+# See ADR 013 for why that split exists.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      # Replays recorded outputs from evals/fixtures/ through the whole
+      # pipeline: sampling, extraction, every scorer, the baseline comparison,
+      # the exit code. The cache is refused in CI outright (ADR 007), so this
+      # needs no flag to stay honest.
+      - name: Eval (fixture subject)
+        run: npm run eval:fixture
+
+      - name: Upload run artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-fixture-report
+          path: .artifacts/
+          retention-days: 14

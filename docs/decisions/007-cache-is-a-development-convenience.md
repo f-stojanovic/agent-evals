@@ -1,8 +1,7 @@
 # 007. The cache is a development convenience, not a source of truth
 
 Date: 2026-08-19
-Status: Accepted, not yet implemented — the policy is recorded on
-`SubjectContext.attempt`; no cache exists yet for it to govern.
+Status: Accepted
 
 ## Context
 

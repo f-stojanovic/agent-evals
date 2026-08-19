@@ -1,7 +1,7 @@
 # 002. The baseline is immutable and enforced as a CI gate
 
 Date: 2026-08-19
-Status: Accepted, not yet implemented
+Status: Accepted
 
 ## Context
 

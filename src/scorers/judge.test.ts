@@ -21,6 +21,7 @@ function fakeJudge(
   return {
     model,
     calls,
+    locked: () => Promise.resolve({ modelId: model, revision: 'fake', dtype: 'replay' }),
     evaluate({ system, user }): Promise<JudgeResponse> {
       calls.push({ system, user });
       const next = scripted[Math.min(index, scripted.length - 1)];

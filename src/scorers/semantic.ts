@@ -16,9 +16,18 @@
  */
 
 import { ensureModelLock } from '../models-lock.js';
-import { uncalibrated } from '../uncalibrated.js';
 import type { LockedModel } from '../models-lock.js';
-import type { EvalCase, Score, ScoreArgs, Scorer } from '../types.js';
+import type {
+  EvalCase,
+  Score,
+  ScoreArgs,
+  Scorer,
+  UncalibratedConstant,
+} from '../types.js';
+
+/** Raw cosine at or above which a response counts as matching. Not measured —
+ *  see the `uncalibrated` entry this is reported under. */
+export const DEFAULT_SIMILARITY_THRESHOLD = 0.8;
 
 /* ------------------------------------------------------------------ *
  * The embedder
@@ -179,19 +188,32 @@ export function semanticSimilarity(options: SemanticSimilarityOptions = {}): Sco
   const name = options.name ?? 'semantic-similarity';
   const embedder = options.embedder ?? localEmbedder();
   const compare = options.compare ?? 'text';
-  const threshold =
-    options.threshold ??
-    uncalibrated(
-      0.8,
-      'semantic-similarity-threshold',
-      'raw cosine above which a response counts as matching; a guess, since the ' +
-        'right cutoff depends on the encoder and the domain. Calibrate it the way ' +
-        'src/calibrate.ts calibrates the judge, against labelled pairs.',
-    );
+  const threshold = options.threshold ?? DEFAULT_SIMILARITY_THRESHOLD;
+
+  /* Declared only when it was not supplied: a threshold the caller chose is
+     the caller's business, and reporting it as this scorer's guess would be
+     wrong. */
+  const uncalibrated: UncalibratedConstant[] =
+    options.threshold === undefined
+      ? [
+          {
+            id: `${name}.threshold`,
+            value: DEFAULT_SIMILARITY_THRESHOLD,
+            note:
+              'raw cosine above which a response counts as matching. A guess: the ' +
+              'right cutoff depends on the encoder and the domain. Calibrate it ' +
+              'against labelled pairs the way src/calibrate.ts calibrates the judge.',
+          },
+        ]
+      : [];
 
   return {
     name,
     claims: [{ key: 'similar', required: true }],
+    /* Only when projecting: with the default `compare: 'text'` this reads
+       output.text and a failed extraction is irrelevant to it. */
+    consumesExtraction: compare !== 'text',
+    uncalibrated,
     async score({ case: evalCase, output, extraction }: ScoreArgs): Promise<Score> {
       const expectations = readSimilarExpectation(name, evalCase);
       const actual = selectText({ scorerName: name, compare, output, extraction, evalCase });

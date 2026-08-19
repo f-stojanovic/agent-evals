@@ -1,8 +1,7 @@
 # 009. Model revisions are locked
 
 Date: 2026-08-19
-Status: Accepted. Implemented for the embedding model; the `judge` slot exists in
-the lockfile type but nothing writes it yet.
+Status: Accepted. Implemented for both the embedding model and the judge.
 
 ## Context
 
@@ -28,8 +27,16 @@ regression caused by `npm update`.
 We record model identity in a committed `models.lock.json`:
 
 ```json
-{ "embedding": { "modelId": "Xenova/all-MiniLM-L6-v2", "revision": "…", "dtype": "fp32" } }
+{
+  "embedding": { "modelId": "Xenova/all-MiniLM-L6-v2", "revision": "…", "dtype": "fp32" },
+  "judge":     { "modelId": "claude-opus-5", "revision": null, "dtype": "hosted" }
+}
 ```
+
+A hosted model exposes no revision to resolve and no quantisation to record, so
+the judge entry pins the model id and records `null` for the rest. That is a
+weaker pin than the encoder's and it is the true one: it still catches the
+change that moves every judge score at once.
 
 The first run resolves the revision from the Hugging Face API and writes the file.
 Every later run compares against it and fails on a mismatch of model id, dtype, or
@@ -58,8 +65,30 @@ baseline recorded under a *different* lock. Until the gate checks that too,
 updating the lock silently invalidates every recorded semantic score. This is
 tracked as a TODO in `src/scorers/semantic.ts`.
 
-And the judge is not locked at all yet. ADR 011 depends on it being locked, and
-the slot is defined but unwritten.
+The judge's pin is weaker than it looks. `claude-opus-5` is a moving target on
+the provider's side: the same id can be served by a different build than it was
+last month, and nothing local detects that. The lockfile catches somebody
+changing the id; it cannot catch the id changing underneath us.
+
+## A note on temperature
+
+The conventional way to make a judge reproducible is `temperature: 0`. On
+current Claude models that parameter has been removed — Opus 5, Sonnet 5, and
+the 4.7/4.8 family reject it with a 400. There is no determinism knob left to
+set.
+
+That is not a footnote, it is a second consequence of this decision. Pinning
+the model removes one source of drift; nothing removes the run-to-run variance
+that used to be suppressed with a sampling parameter. The only honest response
+left is to measure it, so `llmJudge` declares `minSamples: 3` and the runner
+refuses to start a suite that would sample a judged case fewer times than that.
+A single verdict from a probabilistic grader is an anecdote, and before the
+parameter was removed it was at least a *repeatable* anecdote.
+
+The cost lands on every judged run: three subject samples times three judge
+verdicts is nine calls per judged case, where one used to do. That is the price
+of the platform's change, and it is charged whether or not anyone notices it
+was charged.
 
 ## Alternatives rejected
 

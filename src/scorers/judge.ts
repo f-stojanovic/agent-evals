@@ -12,8 +12,23 @@
 
 import { config as loadDotenv } from 'dotenv';
 import Anthropic from '@anthropic-ai/sdk';
-import { uncalibrated } from '../uncalibrated.js';
-import type { EvalCase, Score, ScoreArgs, Scorer, Usage } from '../types.js';
+import { ensureModelLock } from '../models-lock.js';
+import type { LockedModel } from '../models-lock.js';
+import type {
+  EvalCase,
+  Score,
+  ScoreArgs,
+  Scorer,
+  UncalibratedConstant,
+  Usage,
+} from '../types.js';
+
+/** Verdicts collected per output. Odd by requirement — see {@link llmJudge}. */
+export const DEFAULT_JUDGE_SAMPLES = 3;
+/** Spread above which the judge is reported as disagreeing with itself. */
+export const DEFAULT_JUDGE_DISAGREEMENT_THRESHOLD = 0.25;
+/** Median judge score at or above which a case passes. */
+export const DEFAULT_JUDGE_PASS_THRESHOLD = 0.7;
 
 /** What the judge is required to return. Every field is mandatory: a judge
  *  that scores without a reason cannot be reviewed, and one without a
@@ -47,6 +62,10 @@ export class JudgeProtocolError extends Error {
  */
 export interface JudgeClient {
   readonly model: string;
+  /** The lockfile entry this judge runs under, recorded on every score. A
+   *  judge's numbers are no more comparable across model versions than an
+   *  encoder's are — see ADR 009. */
+  locked(): Promise<LockedModel>;
   evaluate(args: { system: string; user: string; signal?: AbortSignal }): Promise<JudgeResponse>;
 }
 
@@ -108,6 +127,7 @@ export type AnthropicJudgeOptions = {
   readonly envPath?: string;
   readonly client?: Anthropic;
   readonly maxTokens?: number;
+  readonly lockPath?: string;
 };
 
 /**
@@ -149,9 +169,28 @@ export function anthropicJudge(options: AnthropicJudgeOptions = {}): JudgeClient
     return client;
   };
 
+  /* Held as a promise so concurrent judge calls all await one lock check. */
+  let lockPromise: Promise<LockedModel> | undefined;
+  const locked = (): Promise<LockedModel> => {
+    lockPromise ??= ensureModelLock({
+      slot: 'judge',
+      modelId: model,
+      /* A hosted model exposes no revision to resolve and no quantisation to
+         record. `null` says that honestly rather than inventing a pin: the
+         lock still catches the model ID changing, which is the change that
+         actually moves every judge score at once. */
+      dtype: 'hosted',
+      revision: null,
+      ...(options.lockPath !== undefined && { lockPath: options.lockPath }),
+    });
+    return lockPromise;
+  };
+
   return {
     model,
+    locked,
     async evaluate({ system, user, signal }) {
+      await locked();
       const response = await getClient().messages.create(
         {
           model,
@@ -234,6 +273,10 @@ export type LlmJudgeOptions = {
    *  itself. */
   readonly disagreementThreshold?: number;
   readonly threshold?: number;
+  /** How many of the k judge calls may be in flight at once. Defaults to 1:
+   *  k calls per case multiplied across a suite is the fastest way to a rate
+   *  limit, and the runner already provides case-level concurrency. */
+  readonly concurrency?: number;
 };
 
 /**
@@ -259,34 +302,66 @@ export type LlmJudgeOptions = {
 export function llmJudge(options: LlmJudgeOptions = {}): Scorer {
   const name = options.name ?? 'llm-judge';
   const judge = options.judge ?? anthropicJudge();
-  const samples =
-    options.samples ??
-    uncalibrated(
-      3,
-      'judge-samples',
-      'how many independent verdicts to collect per case. Three is the smallest ' +
-        'number with a meaningful median; the right number depends on the observed ' +
-        'variance of your rubric and is worth measuring.',
-    );
+  const samples = options.samples ?? DEFAULT_JUDGE_SAMPLES;
   const disagreementThreshold =
-    options.disagreementThreshold ??
-    uncalibrated(
-      0.25,
-      'judge-disagreement-threshold',
-      'spread (max - min) across samples above which the judge is reported as ' +
-        'disagreeing with itself. Not derived from data — measure it with ' +
-        '`npm run calibrate` against your own rubrics.',
-    );
-  const threshold =
-    options.threshold ??
-    uncalibrated(
-      0.7,
-      'judge-pass-threshold',
-      'median judge score at or above which a case passes. A guess; the point of ' +
-        'the continuous value is that this can be revisited against history.',
-    );
+    options.disagreementThreshold ?? DEFAULT_JUDGE_DISAGREEMENT_THRESHOLD;
+  const threshold = options.threshold ?? DEFAULT_JUDGE_PASS_THRESHOLD;
+  const concurrency = options.concurrency ?? 1;
 
-  if (samples < 1) throw new Error(`Scorer "${name}": samples must be at least 1`);
+  /* ODD SAMPLE COUNTS ONLY.
+     With an odd k the median is a value some sample actually returned, so the
+     recorded score and the `reason` printed beside it come from the same
+     verdict. With an even k the median is the mean of the two middle values —
+     a number no judge produced — and the reason has to be borrowed from
+     whichever sample sits nearest, which quietly pairs a score with a
+     justification for a different score. Rejecting even k is cheaper than
+     explaining that footnote in every report. */
+  if (!Number.isInteger(samples) || samples < 1 || samples % 2 === 0) {
+    throw new Error(
+      `Scorer "${name}": samples must be an odd positive integer (got ${samples}). ` +
+        `An even count makes the median a value no sample returned, so the score and ` +
+        `its reason would come from different places.`,
+    );
+  }
+  if (concurrency < 1) throw new Error(`Scorer "${name}": concurrency must be at least 1`);
+
+  const uncalibrated: UncalibratedConstant[] = [
+    ...(options.samples === undefined
+      ? [
+          {
+            id: `${name}.samples`,
+            value: DEFAULT_JUDGE_SAMPLES,
+            note:
+              'independent verdicts collected per output. Three is the smallest odd ' +
+              'number with a meaningful median; the right number depends on the ' +
+              'observed variance of your rubrics and is worth measuring.',
+          },
+        ]
+      : []),
+    ...(options.disagreementThreshold === undefined
+      ? [
+          {
+            id: `${name}.disagreementThreshold`,
+            value: DEFAULT_JUDGE_DISAGREEMENT_THRESHOLD,
+            note:
+              'spread (max - min) across samples above which the judge is reported ' +
+              'as disagreeing with itself. Measure it with `npm run calibrate` ' +
+              'against your own rubrics.',
+          },
+        ]
+      : []),
+    ...(options.threshold === undefined
+      ? [
+          {
+            id: `${name}.threshold`,
+            value: DEFAULT_JUDGE_PASS_THRESHOLD,
+            note:
+              'median judge score at or above which a case passes. A guess; the ' +
+              'continuous value is recorded so it can be revisited against history.',
+          },
+        ]
+      : []),
+  ];
 
   return {
     name,
@@ -294,6 +369,12 @@ export function llmJudge(options: LlmJudgeOptions = {}): Scorer {
       { key: 'rubric', required: true },
       { key: 'acceptable', required: false },
     ],
+    /* Grades the response as the user sees it, not the parsed payload. */
+    consumesExtraction: false,
+    /* See ADR 009: the platform removed `temperature`, so judge variance
+       cannot be suppressed — only measured. One sample is an anecdote. */
+    minSamples: 3,
+    uncalibrated,
     async score({ case: evalCase, output }: ScoreArgs): Promise<Score> {
       const rubric = readRubric(name, evalCase);
       const acceptable = evalCase.expect['acceptable'];
@@ -301,13 +382,18 @@ export function llmJudge(options: LlmJudgeOptions = {}): Scorer {
       const system = buildSystemPrompt(rubric, acceptable);
       const user = buildUserTurn(output.text ?? '', output.toolCalls);
 
-      /* Sequential rather than concurrent: k calls per case across a suite is
-         the fastest way to hit a rate limit, and the runner already provides
-         case-level concurrency. */
+      /* Serial by default: k calls per case multiplied across a suite is the
+         fastest way to hit a rate limit, and the runner already parallelises
+         at case level. `concurrency` raises it for suites with headroom. */
       const responses: JudgeResponse[] = [];
-      for (let i = 0; i < samples; i += 1) {
-        responses.push(await judge.evaluate({ system, user }));
-      }
+      let next = 0;
+      const workers = Array.from({ length: Math.min(concurrency, samples) }, async () => {
+        while (next < samples) {
+          next += 1;
+          responses.push(await judge.evaluate({ system, user }));
+        }
+      });
+      await Promise.all(workers);
 
       const values = responses.map((r) => r.verdict.score);
       const value = median(values);
@@ -326,9 +412,12 @@ export function llmJudge(options: LlmJudgeOptions = {}): Scorer {
          score time rather than at construction because only the output knows
          what actually served the request. */
       const sameModelAsSubject = output.model === judge.model;
+      const lockedModel = await judge.locked();
 
       const verdicts = responses.map((r) => r.verdict);
-      const representative = verdicts[middleIndex(values)] ?? verdicts[0];
+      /* With odd k the median IS one of the samples, so the reason printed
+         beside the score is the reason that produced it. */
+      const representative = verdicts[medianIndex(values)] ?? verdicts[0];
 
       return {
         scorer: name,
@@ -360,7 +449,7 @@ export function llmJudge(options: LlmJudgeOptions = {}): Scorer {
              usually the most expensive part of a suite, and a cost that is
              invisible does not get optimised. */
           judgeUsage: usage,
-          judgeModel: judge.model,
+          judgeModel: lockedModel,
           sameModelAsSubject,
         },
       };
@@ -456,18 +545,18 @@ export function median(values: readonly number[]): number {
   return ((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2;
 }
 
-/** Index in the ORIGINAL array of the sample nearest the median, so the
- *  reported reason belongs to a verdict that was actually given. */
-function middleIndex(values: readonly number[]): number {
-  const target = median(values);
-  let best = 0;
-  let bestDistance = Infinity;
-  values.forEach((value, index) => {
-    const distance = Math.abs(value - target);
-    if (distance < bestDistance) {
-      bestDistance = distance;
-      best = index;
-    }
+/**
+ * Index in the ORIGINAL array of the median sample.
+ *
+ * Only correct for odd-length input, which {@link llmJudge} enforces at
+ * construction. Sorting indices rather than values means the answer points at
+ * the verdict that produced the median, so its `reason` can be quoted.
+ */
+function medianIndex(values: readonly number[]): number {
+  const order = values.map((_, index) => index).sort((a, b) => {
+    const left = values[a] ?? 0;
+    const right = values[b] ?? 0;
+    return left - right;
   });
-  return best;
+  return order[Math.floor(order.length / 2)] ?? 0;
 }

@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "recordedAt": "2026-08-19T15:58:41.447Z",
+  "models": {
+    "judge": {
+      "modelId": "fixture-judge",
+      "revision": "fixture",
+      "dtype": "replay"
+    }
+  },
+  "cases": {
+    "cancellation-or-complaint-01": {
+      "mean": 0.6,
+      "stdDev": 0,
+      "n": 3,
+      "scorers": {
+        "exact-fields": 0.5,
+        "llm-judge": 0.7
+      }
+    },
+    "outage-escalation-01": {
+      "mean": 1,
+      "stdDev": 0,
+      "n": 3,
+      "scorers": {
+        "exact-fields": 1
+      }
+    },
+    "refund-damaged-item-01": {
+      "mean": 1,
+      "stdDev": 0,
+      "n": 3,
+      "scorers": {
+        "exact-fields": 1
+      }
+    }
+  },
+  "totals": {
+    "cases": 3,
+    "weightedScore": 0.9
+  }
+}

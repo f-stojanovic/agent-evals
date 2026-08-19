@@ -1,0 +1,63 @@
+name: eval-live
+
+# Real model calls. Costs money, needs a secret, and returns a different answer
+# each time it runs — which is why it is not on the per-push path (ADR 013).
+#
+# Manual dispatch, plus a nightly schedule so a model-side regression surfaces
+# within a day rather than whenever somebody next remembers to look.
+on:
+  workflow_dispatch:
+    inputs:
+      samples:
+        description: Samples per case (must satisfy every scorer's minimum)
+        default: '3'
+      update_baseline:
+        description: Record the result as the new baseline
+        type: boolean
+        default: false
+  schedule:
+    # 04:00 UTC daily.
+    - cron: '0 4 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  # Never two live runs at once: they would bill twice and race on the lockfile.
+  group: eval-live
+  cancel-in-progress: false
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    # Forks have no secret, and a run without one fails for a reason unrelated
+    # to the subject. Skipping is honest; failing would be noise.
+    if: github.event_name == 'workflow_dispatch' || github.repository_owner == 'filipstojanovic'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      # No --cache flag: the cache is opt-in and the CLI refuses it in CI
+      # anyway. A baseline built from replayed responses records the cache,
+      # not the model (ADR 007).
+      - name: Eval (live models)
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          npm run eval -- \
+            --samples "${{ github.event.inputs.samples || '3' }}" \
+            ${{ github.event.inputs.update_baseline == 'true' && '--update-baseline' || '' }}
+
+      - name: Upload run artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-live-report
+          path: .artifacts/
+          retention-days: 90

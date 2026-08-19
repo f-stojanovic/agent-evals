@@ -10,6 +10,7 @@ function scorerReturning(name: string, score: unknown): Scorer {
   return {
     name,
     claims: [{ key: 'fields', required: true }],
+    consumesExtraction: false,
     score: (): Promise<Score> => Promise.resolve(score as Score),
   };
 }
@@ -91,6 +92,7 @@ describe('invokeScorer', () => {
     const scorer: Scorer = {
       name: 'explodes',
       claims: [{ key: 'fields', required: true }],
+      consumesExtraction: false,
       score: () => Promise.reject(new Error('provider timeout')),
     };
 
