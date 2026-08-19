@@ -2,6 +2,16 @@
 
 Date: 2026-08-19
 Status: Accepted
+Evidence: The gate is verified end to end against a fixture subject — a clean
+          run exits 0, and perturbing one recorded output produces a flagged
+          regression at exit 1. That proves the machinery, not the premise: it
+          has never run against a live model, and no regression has ever been
+          caught in anger here.
+          <!-- FILIP: the real evidence for this ADR is your production
+               experience with an immutable static-analysis baseline — what it
+               caught, over what period, and what the team did before it
+               existed. Add it here; do not let the fixture run stand in for
+               it. -->
 
 ## Context
 

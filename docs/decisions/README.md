@@ -16,6 +16,35 @@
 | [012](012-tolerance-is-derived-from-measured-variance.md) | The regression tolerance is derived from measured variance | Accepted |
 | [013](013-ci-splits-fixture-from-live.md) | CI is split between a fixture run and a live run | Accepted |
 
+## Two axes: Status and Evidence
+
+Every record carries both a `Status` and an `Evidence` line, and they answer
+different questions. **Status** says whether the decision is in force — whether
+the code does this today, and whether a later record supersedes it.
+**Evidence** says whether it has been tested: what has actually been observed
+that supports it, as opposed to what was reasoned about.
+
+They come apart in both directions, and pretending otherwise is how a design
+document turns into marketing. A decision can be correct and entirely
+unverified — [ADR 008](008-embeddings-run-locally.md) is accepted and shipped,
+and the embedding model in question has never once been downloaded. A decision
+can also be well evidenced and wrong, which is what
+[ADR 004](004-scorers-may-share-an-expectation-key.md) records: the rule it
+supersedes had a written justification and a passing test suite, and the
+justification described a mechanism the system does not have.
+
+So the two lines are kept apart deliberately. `Evidence: None.` next to
+`Status: Accepted` is not an admission that the decision is weak; it is a
+statement that the argument for it is reasoning rather than observation, which
+a reader is entitled to know before deciding how much weight to put on it. Where
+nothing has been observed, the line says what would count — so the gap is a
+piece of work rather than a hole.
+
+Two of these records — [009](009-model-revisions-are-locked.md) and
+[011](011-the-judge-is-calibrated-against-human-labels.md) — argue that a number
+is inadmissible until it has been measured. By their own standard, several
+decisions here are not yet admissible. The Evidence lines say so.
+
 ## Why this repository keeps decision records
 
 Most of what is interesting about an eval harness is not in its code. The code

@@ -2,6 +2,14 @@
 
 Date: 2026-08-19
 Status: Accepted. Implemented for both the embedding model and the judge.
+Evidence: Partial. The lock logic — writing on first run, failing on a
+          changed model id or dtype, recording an unresolvable revision as null
+          — is covered by src/models-lock.test.ts against an injected resolver.
+          Nothing has exercised it for real: models.lock.json has never been
+          written, no revision has ever been resolved from the Hugging Face
+          API, and the judge slot has never been populated by a live call.
+          The temperature claim is verified against the current API
+          documentation, not against a 400 this repository received.
 
 ## Context
 

@@ -2,6 +2,15 @@
 
 Date: 2026-08-19
 Status: Accepted
+Evidence: None for the decision itself. The embedding model has never been
+          downloaded or run — models.lock.json does not exist, the one
+          integration test is skipped unless RUN_MODEL_TESTS=1, and that has
+          never been set. Every semantic score in this repository came from a
+          fake embedder.
+          The cost side is observed: `npm audit` reports two high-severity
+          transitive advisories from this dependency with no upstream fix.
+          What would count: one run of the real encoder, and one CI failure
+          avoided that a hosted key would have caused.
 
 ## Context
 

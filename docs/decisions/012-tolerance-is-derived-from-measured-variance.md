@@ -2,6 +2,16 @@
 
 Date: 2026-08-19
 Status: Accepted
+Evidence: Partial. src/baseline.test.ts shows the mechanism doing the thing
+          it exists for — the same 0.05 drop fails a stable case and passes a
+          noisy one — but every stdDev in those tests is a number the test
+          supplies. In real runs so far it has never operated on measured
+          variance at all: the fixture subject is deterministic, so every
+          recorded stdDev is 0 and the gate falls back to the fixed floor it
+          was designed to replace.
+          <!-- FILIP: if you have had a threshold-based gate that flapped until
+               someone disabled it, that is the experience this ADR is built
+               on. Add what the threshold was and how long it survived. -->
 
 ## Context
 

@@ -2,6 +2,14 @@
 
 Date: 2026-08-19
 Status: Accepted
+Evidence: Direct, from this repository's own history. The near-miss is real:
+          the semantic scorer shipped with a [0.3, 0.95] rescale stacked under
+          an invented threshold, and formatCompliance shipped with a 0.5 for a
+          markdown fence. Both were defended in comments at the time; both were
+          deleted. The reporting mechanism is covered by
+          src/uncalibrated.test.ts, including the case that motivated dropping
+          the global registry — a count that changed with which modules had
+          been imported.
 
 ## Context
 

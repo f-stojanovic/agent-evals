@@ -2,6 +2,16 @@
 
 Date: 2026-08-19
 Status: Accepted
+Evidence: Partial, and weaker than it looks. Every resolution route and the
+          multi-fence ambiguity refusal are covered by
+          src/scorers/extract.test.ts. But no real model response has ever been
+          extracted here: the inputs in those tests and the outputs in
+          evals/fixtures/ were hand-authored, not captured from a model. The
+          claim that models scatter payloads across prose, fences and tool
+          calls is drawn from general knowledge, not from anything this
+          repository observed.
+          What would count: a live run whose `via` distribution is not 100%
+          one route.
 
 ## Context
 

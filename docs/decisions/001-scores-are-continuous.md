@@ -2,6 +2,13 @@
 
 Date: 2026-08-19
 Status: Accepted
+Evidence: Partial. The mechanism is covered — partial-credit fractions and the
+          NaN rejection are asserted in src/scorers/exact.test.ts and
+          src/scorers/invoke.test.ts. The motivating claim is not: no real
+          subject has ever been evaluated in this repository, so nothing here
+          has been observed to improve in a way a boolean would have hidden.
+          What would count: one live run where a change moves several cases
+          without crossing any threshold.
 
 ## Context
 

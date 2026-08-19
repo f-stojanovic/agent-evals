@@ -3,6 +3,18 @@
 Date: 2026-08-19
 Status: Accepted. The judge and `npm run calibrate` are implemented; the
 calibration has not yet been run against a live judge, so no measured MAE exists.
+Evidence: None. THE JUDGE HAS NEVER BEEN MEASURED. `npm run calibrate` has
+          never been executed against a live judge, so no mean absolute error
+          exists — not a poor one, none. The judge has never called the
+          Anthropic API at all; every verdict in this repository came from a
+          scripted fake or a replayed fixture.
+          The eight labels in evals/calibration/ are one pass by one annotator,
+          unreviewed, and two of them (cal-hallucinated-name-01 at 0.5,
+          cal-prose-not-json-01 at 0.3) are contested judgement calls.
+          So this ADR argues that a judge's scores are inadmissible until
+          measured, and this repository's judge is, by its own standard,
+          inadmissible. What would count: one live calibration run, and a
+          second annotator disagreeing with the labels.
 
 ## Context
 

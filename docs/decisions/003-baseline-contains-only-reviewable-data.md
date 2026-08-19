@@ -2,6 +2,14 @@
 
 Date: 2026-08-19
 Status: Accepted
+Evidence: Partial. src/baseline.test.ts asserts that raw provider output and
+          per-sample values never reach the recorded file. The three reasons
+          are untested at scale: the committed baseline is 727 bytes over three
+          cases, so neither the reviewability argument nor the size argument
+          has met a suite large enough to strain it, and no real customer data
+          has ever passed through this repository.
+          What would count: a suite of a few hundred cases, and one diff a
+          reviewer actually read.
 
 ## Context
 

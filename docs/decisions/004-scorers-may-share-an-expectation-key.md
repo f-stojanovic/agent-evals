@@ -2,6 +2,13 @@
 
 Date: 2026-08-19
 Status: Accepted. Supersedes the earlier one-owner-per-key rule, which was wrong.
+Evidence: Direct, and the strongest in this set. The superseded rule shipped,
+          was exercised, and was proved wrong by a test written for the use
+          case it blocked — the test asserted two differently-named instances
+          of one factory could be registered, and it failed. The reversal and
+          the new behaviour are both covered by src/scorers/registry.test.ts.
+          This is the only ADR here supported by an observed error rather than
+          by reasoning.
 
 ## Context
 

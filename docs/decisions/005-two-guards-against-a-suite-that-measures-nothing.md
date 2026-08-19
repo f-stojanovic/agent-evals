@@ -2,6 +2,16 @@
 
 Date: 2026-08-19
 Status: Accepted
+Evidence: Partial. Both guards are covered by src/scorers/registry.test.ts,
+          and the cost is observed: adding a required `format` claim to
+          formatCompliance invalidated the committed example cases and forced
+          an edit. Neither guard has ever caught a real authoring mistake,
+          because every case in this repository was written by one person in
+          one sitting.
+          <!-- FILIP: if you have watched a suite go green while silently
+               measuring less than it did the week before, that is the evidence
+               this ADR rests on. Say what it was and how long it went
+               unnoticed. -->
 
 ## Context
 
