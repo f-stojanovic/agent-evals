@@ -191,6 +191,50 @@ describe('baseline files', () => {
 });
 
 /* ------------------------------------------------------------------ *
+ * C3b — every referenced image exists
+ * ------------------------------------------------------------------ */
+
+describe('README images', () => {
+  it('every image the README references exists on disk', async () => {
+    const { access } = await import('node:fs/promises');
+
+    const referenced = [...readme.matchAll(/!\[[^\]]*\]\(([^)]+)\)/g)]
+      .map((m) => m[1] as string)
+      .filter((src) => !src.startsWith('http'));
+
+    /* A broken image in a public README is the same defect as a dangling
+       {@link}: a claim the document makes that nothing behind it supports.
+       It is also worse to look at, because GitHub renders the alt text in a
+       broken-image box to everyone who opens the page. */
+    expectNonEmptyCorpus(referenced, 'no local images referenced in README.md');
+
+    const missing: string[] = [];
+    for (const src of referenced) {
+      try {
+        await access(join(ROOT, src));
+      } catch {
+        missing.push(src);
+      }
+    }
+
+    expect(missing).toEqual([]);
+  });
+
+  it('every referenced image has non-empty alt text', () => {
+    const images = [...readme.matchAll(/!\[([^\]]*)\]\(([^)]+)\)/g)];
+    expectNonEmptyCorpus(images, 'no images referenced in README.md');
+
+    const withoutAlt = images
+      .filter((m) => (m[1] ?? '').trim() === '')
+      .map((m) => m[2] as string);
+
+    /* The badges at the top have alt text; a screenshot carrying evidence has
+       to as well, or the evidence is invisible to anyone using a reader. */
+    expect(withoutAlt).toEqual([]);
+  });
+});
+
+/* ------------------------------------------------------------------ *
  * C4 — supersession is bidirectional
  * ------------------------------------------------------------------ */
 

@@ -1,4 +1,5 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -322,6 +323,46 @@ describe('baselineFrom', () => {
 
   it('returns undefined for a baseline that does not exist yet', async () => {
     await expect(readBaseline(join(tmpdir(), 'nope-agent-evals.json'))).resolves.toBeUndefined();
+  });
+});
+
+/**
+ * The archives exist to anchor figures the README quotes, not to gate anything.
+ * Their `_archived` key is the mechanism: `strictObject` rejects it, so a
+ * mistyped `--baseline` path fails loudly instead of comparing a live run
+ * against a snapshot from three subject versions ago.
+ *
+ * Asserting it means the protection cannot be removed by someone tidying the
+ * key away — which would leave the files looking exactly like usable baselines.
+ */
+describe('archived baselines', () => {
+  const archives = [
+    { file: 'evals/baseline.freetext.json', anchors: '0.751, the free-text baseline' },
+    { file: 'evals/baseline.enums-prescorer.json', anchors: '0.953, the post-enum baseline' },
+  ];
+
+  it('are rejected by the strict loader, so nothing can gate against them', async () => {
+    expect(archives.length).toBeGreaterThan(0);
+
+    for (const { file, anchors } of archives) {
+      const path = fileURLToPath(new URL(`../${file}`, import.meta.url));
+      await expect(readBaseline(path), `${file} (${anchors})`).rejects.toThrow();
+    }
+  });
+
+  it('each carries the _archived key that does the rejecting', async () => {
+    for (const { file } of archives) {
+      const path = fileURLToPath(new URL(`../${file}`, import.meta.url));
+      const raw = JSON.parse(await readFile(path, 'utf8')) as Record<string, unknown>;
+
+      expect(raw['_archived'], `${file} has no _archived key`).toBeDefined();
+      /* The header has to SAY it is not a gate, because the file is otherwise
+         indistinguishable from one. Stringified rather than read field-by-field
+         because the two archives were written at different times and one is a
+         sentence where the other is a structured note — the requirement is that
+         the warning is present, not that it has a particular shape. */
+      expect(JSON.stringify(raw['_archived'])).toMatch(/not a gate|archive|nothing (compares|can accidentally)/i);
+    }
   });
 });
 

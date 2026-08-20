@@ -15,7 +15,7 @@ Evidence: BOTH WORKFLOWS HAVE RUN, 2026-08-20, on
           The fixtures are RECORDED for three of five cases and hand-authored
           for two added without budget for a live run; each declares which, and
           the report prints the tally.
-          What would still count: a nightly `eval-live` that passes, which has
+          What would still count: a scheduled `eval-live` that passes, which has
           not yet happened.
 
 ## Context
@@ -58,7 +58,7 @@ registered but skipped, because no case declares `schema` or `toolCalls`, and
 `formatCompliance` and `semanticSimilarity` are not registered at all.
 Deterministic, free, no secrets, works on a fork.
 
-**`eval-live.yml`** runs on manual dispatch and nightly, against real models,
+**`eval-live.yml`** runs on manual dispatch and weekly, against real models,
 with the cache disabled and the report uploaded as an artifact.
 
 The two runs keep separate baselines — `evals/baseline.fixture.json` and
@@ -98,9 +98,11 @@ detects that drift or reminds anyone to re-record.
 silently uncovered case is the failure mode ADR 005 exists to prevent — but it
 does mean adding a case is a two-step commit.
 
-**A model regression is found within a day, not within a push.** For a nightly
+**A model regression is found within a week, not within a push.** For a weekly
 schedule that is the honest bound, and it is worse than what the README of a
-lesser project would claim.
+lesser project would claim. Weekly rather than nightly is a cost decision: a
+nightly live run bills every night for a subject that changes rarely. A project
+shipping against this suite daily should tighten it.
 
 ## Alternatives rejected
 
@@ -111,7 +113,7 @@ for reasons unrelated to the change gets disabled, and then there is no gate.
 still breaks for forks, and still bills for documentation changes.
 
 **No fixture run — unit tests only on push.** Unit tests cover the parts in
-isolation; nothing would exercise the assembled pipeline until the nightly run.
+isolation; nothing would exercise the assembled pipeline until the scheduled run.
 The fixture run is the only thing that proves `runSuite`, the scorers, the
 baseline comparison, and the exit code work together, which is precisely the
 seam a refactor breaks.

@@ -97,7 +97,7 @@ describe('historical figures', () => {
     },
     {
       figure: '0.953',
-      file: 'evals/baseline.enums.json',
+      file: 'evals/baseline.enums-prescorer.json',
       describes: 'the post-enum baseline, before the scorer set was recorded or expanded',
     },
   ];

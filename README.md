@@ -98,7 +98,7 @@ Three things worth stating so the result is not read as better than it is:
   wording failure, that variation was invisible underneath the constant error.
 
 Both figures are anchored to committed archives rather than retyped:
-`evals/baseline.freetext.json` holds the before, `evals/baseline.enums.json`
+`evals/baseline.freetext.json` holds the before, `evals/baseline.enums-prescorer.json`
 holds the after, and a test fails if the prose and the archives disagree.
 Neither is a gate — nothing compares against them.
 
@@ -446,7 +446,15 @@ not have, and return a different answer each time. So there are two gates
 | workflow | when | what it proves | baseline |
 | --- | --- | --- | --- |
 | `ci.yml` | every push and PR | the **harness** works — typecheck, unit tests, and a full eval replaying fixed outputs. Deterministic, free, no secrets, works on forks. | `evals/baseline.fixture.json` |
-| `eval-live.yml` | manual + nightly | the **models** still behave — real API calls, cache disabled, report uploaded. | `evals/baseline.json` |
+| `eval-live.yml` | manual + weekly | the **models** still behave — real API calls, cache disabled, report uploaded. | `evals/baseline.json` |
+
+![eval-live failing on GitHub Actions: the run refuses a baseline recorded in
+an older format and exits 1](docs/images/gate-refuses-stale-baseline.png)
+
+*`eval-live` refusing a baseline recorded in an older format, on real CI
+against a genuinely stale file. This is the guard firing — not a caught
+regression. Nothing has yet changed a prompt and been caught by the gate;
+that is still open below.*
 
 **Two baseline files, and not for convenience.** The fixture run grades with a
 replaying judge and the live run grades with `claude-opus-5`. Scores from
@@ -460,7 +468,7 @@ and nothing compares against it.
 
 **The per-push gate cannot catch a model regression.** It runs against
 recordings. A model that got worse overnight passes it, and is caught by the
-nightly run within a day. Saying otherwise would be the exact kind of
+weekly run within a week. Saying otherwise would be the exact kind of
 overstatement this project exists to prevent.
 
 ## Status
@@ -482,7 +490,7 @@ overstatement this project exists to prevent.
       cost accounting
 - [x] Baseline file and the CI gate, with a tolerance derived from variance
 - [x] Report — markdown and a JSON artifact
-- [x] CI: fixture gate on every push, live run nightly
+- [x] CI: fixture gate on every push, live run weekly
 - [x] Live judge calibration — the measured figure is in the generated block
       under "Judging the judge"
 - [x] Live runs against a real subject, with the baseline recorded from one —
