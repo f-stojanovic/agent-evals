@@ -91,6 +91,19 @@ it was reworded to point at the command rather than state a value. That is a
 real loss of at-a-glance information, accepted because the alternative is a
 number nothing keeps honest.
 
+**Removing a number can introduce a falsehood, and did.** The Before/After
+section said two consecutive runs "differed in the third decimal". They differed
+in the second, by about two percent — the block above it showed 0.972 against a
+headline of 0.953. The earlier wording named both figures and was correct;
+genericising it to avoid a stale number made it wrong, and wrong in a way no
+check catches, because there is no longer a figure to compare against anything.
+
+So the rule is not "prefer vague prose to stale numbers". It is: **either the
+figure is anchored and stated, or the sentence does not characterise a magnitude
+at all.** A number with a committed file behind it is safer than an adjective
+with nothing behind it, and "differed in the third decimal" is an assertion
+about a quantity wearing the clothes of a hedge.
+
 **The markers are load-bearing and invisible in rendered Markdown.** Delete one
 and `applyBlocks` throws rather than silently writing the content somewhere
 plausible — but a reader editing the README in a browser sees nothing warning

@@ -93,9 +93,10 @@ Three things worth stating so the result is not read as better than it is:
   arrives, so the 67%-fenced observation vanished as a side effect of the
   delivery mechanism, not because formatting improved. The earlier run is
   preserved in `evals/baseline.freetext.json`.
-- **The recorded numbers move between runs.** Two consecutive runs of the
-  constrained subject differed in the third decimal. At 0.75 with a systematic
-  wording failure, that variation was invisible underneath the constant error.
+- **The recorded numbers move between runs.** Consecutive runs of the
+  constrained subject did not reproduce exactly; the archived 0.953 is one draw,
+  not a fixed property of the model. At 0.75 with a systematic wording failure,
+  that variation was invisible underneath the constant error.
 
 Both figures are anchored to committed archives rather than retyped:
 `evals/baseline.freetext.json` holds the before, `evals/baseline.enums-prescorer.json`
@@ -136,9 +137,9 @@ const run = await runSuite({
 A case is YAML:
 
 ```yaml
-- id: refund-damaged-item-01     # stable forever; it is the baseline key
+- id: "refund-damaged-item-01"   # stable forever; it is the baseline key
   input:
-    subject: Order #48812 arrived broken
+    subject: "Order #48812 arrived broken"   # quote it: bare `#` starts a comment
     body: |
       The ceramic mug was shattered inside the box. Please refund me.
   expect:
@@ -199,16 +200,19 @@ This run used 4 uncalibrated constants:
 
 <!-- /generated:run-block -->
 
-**`below threshold: 2 of 3` and the gate still passes.** Two different
-questions, printed as two lines. The tally counts cases under each scorer's own
-cutoff; the gate asks only whether anything got *worse* than the baseline. Here
-the tally is mostly a statement about the semantic scorer's uncalibrated 0.8
-threshold, not about the model — see below.
+**The `below threshold` tally and the gate answer different questions**, which
+is why they are printed as two lines. The tally counts cases under each scorer's
+own cutoff; the gate asks only whether anything got *worse* than the baseline,
+so a run is routinely green with cases below threshold. Here the tally is driven
+by the semantic scorer's uncalibrated 0.8 cutoff rather than by the model — see
+below.
 
-**The `via` column is per case.** Under the earlier free-text subject it read
-`fenced 5/5`, `fenced 4/5` and `json 5/5` on three cases sharing one system
-prompt: the envelope tracked the input, not the instruction. A suite-wide total
-would have averaged that away.
+**The `via` column is per case.** Under the earlier free-text subject it showed
+different routes on different cases under one identical system prompt — some
+fencing every sample, some none — so the envelope tracked the input rather than
+the instruction. A suite-wide total would have averaged that away. (The current
+subject uses a tool call, so the column is uniform; the observation belongs to
+the archived free-text run.)
 
 ## Choosing a scorer by field type
 
@@ -231,8 +235,10 @@ So the scorer follows the field
 ([ADR 019](docs/decisions/019-the-scorer-follows-the-field-type.md)):
 
 - **Enum fields** → `exactFields`. The set is closed and the API rejects
-  anything outside it, so equality is the right question. All three cases score
-  1.00 here, where free text scored 0.75.
+  anything outside it, so equality is the right question. The `exact-fields`
+  column in the run block above is at or near 1.00 throughout, where free text
+  scored 0.75 across the board — the archived before and after are
+  `evals/baseline.freetext.json` and `evals/baseline.enums-prescorer.json`.
 - **Free text** → `semanticSimilarity` projected onto that one field, and
   `llmJudge` where the rubric needs prose. Never embed the whole payload: the
   encoder spends its capacity on braces and key names identical in every
@@ -240,14 +246,14 @@ So the scorer follows the field
 - **Format** → a per-case declared assertion (`expect.format`), not a global
   metric. The suite-wide `via` distribution stays a metric and grades nothing.
 
-The semantic numbers are worth looking at squarely. Three summaries that are
-plainly correct on reading score **0.54, 0.76 and 0.79** raw cosine against
-hand-written acceptable paraphrases. That band is what sentence encoders do, it
-is why [ADR 010](docs/decisions/010-uncalibrated-constants-are-counted.md)
-deleted the rescale that used to hide it, and it means the default 0.8 threshold
-currently marks all three as below threshold. That number is a guess, it is
-declared as one in every report, and calibrating it against labelled pairs is
-outstanding work.
+The semantic numbers are worth looking at squarely: the `semantic-similarity`
+column in the run block above holds summaries that are all plainly correct on
+reading, and they do not cluster near 1.0. That band is what sentence encoders
+do, it is why [ADR 010](docs/decisions/010-uncalibrated-constants-are-counted.md)
+deleted the rescale that used to hide it, and it is why the default 0.8 cutoff
+puts correct summaries below threshold. That cutoff is a guess, it is declared
+as one in every report, and calibrating it against labelled pairs was attempted
+and failed — see the table below.
 
 Semantic similarity also cannot catch a fluent lie: a summary confidently wrong
 about the order number still lands close to the expected paraphrase. The enum
@@ -572,6 +578,13 @@ able to silently bill a key nobody meant to use.
 project exercises — it embeds text, never decodes images, and unpacks only the
 ONNX runtime — but they appear in any `npm audit`, and on a public repository
 that is worth stating rather than leaving to be discovered.
+
+---
+
+Built by [Filip Stojanović](https://github.com/f-stojanovic) — backend engineer,
+nine years, mostly Symfony and payments. I wrote this while moving into AI
+engineering, so that I would have something measured to say about evals instead
+of a claim that I understand them.
 
 ## Licence
 

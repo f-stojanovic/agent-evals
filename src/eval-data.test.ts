@@ -21,6 +21,19 @@
  * valid, the loader is correct, and the truncation is exactly what the spec
  * says should happen. So the check is on the source text, where the mistake is,
  * rather than on the parsed value, where it is already gone.
+ *
+ * WHAT IT CANNOT DISTINGUISH
+ * --------------------------
+ * A deliberate trailing comment and a lost tail are the same bytes:
+ *
+ *     id: refund-damaged-item-01     # stable forever, it is the baseline key
+ *     subject: Order #48812 arrived broken
+ *
+ * The first is intended and the second is a bug, and no rule on the text can
+ * tell them apart. So the check demands quoting in both cases — which costs two
+ * characters on an intentional comment and makes the boundary explicit, since a
+ * quoted scalar keeps its trailing comment working. The tax is on the rarer,
+ * safer case; the guarantee is on the one that has now cost this repo twice.
  */
 
 import { readdir, readFile } from 'node:fs/promises';
@@ -28,7 +41,10 @@ import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const EVALS = fileURLToPath(new URL('../evals', import.meta.url));
+/* No trailing slash: paths are reported by slicing this prefix off, and a
+   stray separator eats the first character of every filename. */
+const ROOT = fileURLToPath(new URL('..', import.meta.url)).replace(/\/$/, '');
+const EVALS = join(ROOT, 'evals');
 
 async function yamlFiles(dir: string): Promise<string[]> {
   const entries = await readdir(dir, { withFileTypes: true });
@@ -41,10 +57,55 @@ async function yamlFiles(dir: string): Promise<string[]> {
   return files.sort();
 }
 
+/**
+ * YAML fenced blocks inside Markdown, extracted with the line offset of the
+ * fence so a report points at the real line in the real file.
+ *
+ * The corpus started as `evals/` alone, which is why the Quickstart example in
+ * README.md carried the exact defect this file exists to catch — an unquoted
+ * `#` truncating a scalar — in the snippet a reader copies first. A check is
+ * only as good as the corpus it was pointed at (ADR 018).
+ */
+async function markdownYamlBlocks(dir: string): Promise<{ file: string; text: string }[]> {
+  const entries = await readdir(dir, { withFileTypes: true });
+  const out: { file: string; text: string }[] = [];
+
+  for (const entry of entries) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (entry.name === 'node_modules' || entry.name.startsWith('.')) continue;
+      out.push(...(await markdownYamlBlocks(full)));
+      continue;
+    }
+    if (!entry.isFile() || !/\.md$/i.test(entry.name)) continue;
+
+    const text = await readFile(full, 'utf8');
+    const lines = text.split('\n');
+    let start = -1;
+    lines.forEach((line, index) => {
+      if (start === -1 && /^\s*```ya?ml\s*$/i.test(line)) {
+        start = index;
+        return;
+      }
+      if (start !== -1 && /^\s*```\s*$/.test(line)) {
+        /* Padded so reported line numbers match the Markdown file. */
+        const padded = [...Array<string>(start + 1).fill(''), ...lines.slice(start + 1, index)];
+        out.push({ file: full.slice(ROOT.length + 1), text: padded.join('\n') });
+        start = -1;
+      }
+    });
+  }
+  return out;
+}
+
 const files = await yamlFiles(EVALS);
-const sources = await Promise.all(
-  files.map(async (f) => ({ file: f.slice(EVALS.length + 1), text: await readFile(f, 'utf8') })),
-);
+const sources = [
+  ...(await Promise.all(
+    files.map(async (f) => ({ file: f.slice(ROOT.length + 1), text: await readFile(f, 'utf8') })),
+  )),
+  /* Documentation is part of the corpus: a broken example teaches the defect. */
+  ...(await markdownYamlBlocks(ROOT)),
+];
 
 /** See ADR 018. A check that inspected nothing has abstained, not passed. */
 function expectNonEmptyCorpus(items: { length: number }, label: string): void {
@@ -82,7 +143,11 @@ describe('committed eval data', () => {
           return;
         }
 
-        const match = /^\s*(?:- |[\w.]+:\s+)(.*)$/.exec(line);
+        /* `- key: value` is a list item AND a mapping, so the leading `- ` has
+           to be stripped before the key, or the whole `key: value` is read as
+           the value and any legitimate trailing comment looks like a defect. */
+        const withoutDash = line.replace(/^(\s*)- /, '$1');
+        const match = /^\s*(?:[\w.]+:\s+)?(.*)$/.exec(withoutDash);
         const value = match?.[1];
         if (value === undefined || value === '') return;
         if (value.startsWith('"') || value.startsWith("'")) return;
