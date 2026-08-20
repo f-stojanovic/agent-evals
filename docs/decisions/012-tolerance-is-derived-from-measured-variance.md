@@ -13,9 +13,6 @@ Evidence: Partial, and now operating on one real number. The live baseline of
           every other stdDev it is tested against.
           What would still count: a suite where the noisy and stable cases
           disagree about whether a drop is real.
-          <!-- FILIP: if you have had a threshold-based gate that flapped until
-               someone disabled it, that is the experience this ADR is built
-               on. Add what the threshold was and how long it survived. -->
 
 ## Context
 
@@ -34,8 +31,6 @@ thinks of numbers nobody measured.
 We already record what is needed to do better. Every case carries `stdDev` and
 `n` on both sides of the comparison, because ADR 002 put them in the baseline
 before any baseline existed.
-
-<!-- FILIP: add the concrete experience here — what you saw, where, what it cost -->
 
 ## Decision
 

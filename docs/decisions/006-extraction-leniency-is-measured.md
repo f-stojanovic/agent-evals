@@ -15,7 +15,9 @@ Evidence: CONFIRMED BY OBSERVATION, 2026-08-19, and more strongly than
           response has yet produced two parseable blocks. Its behaviour is
           covered only by src/scorers/extract.test.ts.
           Routes and the ambiguity refusal are covered by
-          src/scorers/extract.test.ts; evals/fixtures/ remains hand-authored.
+          src/scorers/extract.test.ts. evals/fixtures/ is now captured from a
+          live run rather than hand-authored, though the current subject uses a
+          tool call, so those recordings exercise the `tool-call` route only.
 
 ## Context
 
@@ -33,8 +35,11 @@ Silent leniency — parse whatever is findable — throws the format signal away
 entirely. A model degrading from clean JSON to prose-with-a-code-block scores
 identically before and after.
 
-<!-- FILIP: add the concrete experience here — what you saw, where, what it cost -->
-
+The only conscious leniency I saw implemented remotely intimately was changing the 
+architectural rule engine from “do not block” to “is no longer to be observed”. It 
+continued to go through the pipeline, it continued to be run and to produce output- 
+which no one read. Leniency which produces no distinct measurable output is not leniency. 
+It’s simply turning a light off very slowly until no one’s around any more.
 
 There is also a timing constraint. Relaxing extraction later moves every
 extraction score upward at once, which in a recorded baseline is indistinguishable

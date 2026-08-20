@@ -8,10 +8,16 @@ Evidence: Partial. Both guards are covered by src/scorers/registry.test.ts,
           an edit. Neither guard has ever caught a real authoring mistake,
           because every case in this repository was written by one person in
           one sitting.
-          <!-- FILIP: if you have watched a suite go green while silently
-               measuring less than it did the week before, that is the evidence
-               this ADR rests on. Say what it was and how long it went
-               unnoticed. -->
+          In a rebase I spotted two unit tests that have had been passing for months 
+          whilst not testing anything at all. One was mocking an interface and calling 
+          a method which only existed on the concrete implementation of the interface – 
+          the mock returned null, and the test never got anywhere near the code which was 
+          claiming to be under test. The other was asserting fixed hardcoded dates that had
+          long passed so the policy being tested fell back to wallclocktime for its 
+          injected dates rather than the ones I'd hardcoded into the test. 
+          Neither was one of my tests nor have either ever failed. 
+          Which is the issue, a failing test grabs the eye, one that asserts something but 
+          tests it vacuously will not.
 
 ## Context
 
@@ -35,7 +41,6 @@ is measured by nothing at all.
 Both produce a suite that measures less than it did yesterday with no signal
 anywhere that it happened.
 
-<!-- FILIP: add the concrete experience here — what you saw, where, what it cost -->
 
 ## Decision
 

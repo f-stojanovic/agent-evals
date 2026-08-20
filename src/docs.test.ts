@@ -58,6 +58,33 @@ function relative(file: string): string {
   return file.slice(ROOT.length);
 }
 
+/**
+ * Fails when a check has nothing to inspect.
+ *
+ * THE THIRD APPEARANCE OF ONE BUG. A suite that scores no case reports green.
+ * A case that no scorer measures reports green. And when C1 below was first
+ * written, an injected defect went undetected because the injection replaced a
+ * string that did not exist — the check found no broken links because it found
+ * no links, and reported pass.
+ *
+ * Every one of those is emptiness read as success. The harness already refuses
+ * the first two (ADR 005); this refuses the third. A check that inspected
+ * nothing has not passed, it has abstained, and the two must not look alike.
+ *
+ * The message names what was expected and where it was looked for, because the
+ * realistic cause is a rename: somebody retitles the README's `## Status`
+ * heading and C2's corpus silently empties.
+ */
+function expectNonEmptyCorpus(items: { length: number }, label: string): void {
+  if (items.length === 0) {
+    throw new Error(
+      `This check inspected nothing: ${label}. That is a failure, not a pass — ` +
+        `a check with an empty corpus cannot distinguish "no defects" from ` +
+        `"never looked". Most likely something it locates by name was renamed or moved.`,
+    );
+  }
+}
+
 /* ------------------------------------------------------------------ *
  * C1 — every {@link Type.member} resolves
  * ------------------------------------------------------------------ */
@@ -78,6 +105,15 @@ describe('JSDoc links', () => {
         if (name !== undefined && body !== undefined) declarations.set(name, body);
       }
     }
+
+    const links = [...sources.values()].flatMap((text) => [
+      ...text.matchAll(/\{@link (\w+)\.(\w+)\}/g),
+    ]);
+    expectNonEmptyCorpus(links, 'no {@link Type.member} found in src/**/*.ts');
+    expectNonEmptyCorpus(
+      [...declarations.keys()],
+      'no exported type declarations parsed out of src/**/*.ts',
+    );
 
     const broken: string[] = [];
     for (const [file, text] of sources) {
@@ -115,6 +151,11 @@ describe('README scorer claims', () => {
       ),
     ].sort();
 
+    expectNonEmptyCorpus(
+      claimed,
+      'no scorer names found in the README `## Status` section (was the heading renamed?)',
+    );
+
     const cli = sources.get(join(SRC, 'cli.ts')) ?? '';
     const registered = claimed.filter((name) => new RegExp(`${name}\\(`).test(cli));
 
@@ -135,6 +176,8 @@ describe('baseline files', () => {
       .filter((f) => f.startsWith('baseline') && f.endsWith('.json'))
       .sort();
 
+    expectNonEmptyCorpus(onDisk, 'no baseline*.json files found under evals/');
+
     const prose = [readme, ...adrs.values()].join('\n');
     const undocumented = onDisk.filter((f) => !prose.includes(f));
 
@@ -153,6 +196,9 @@ describe('baseline files', () => {
 
 describe('ADR supersession', () => {
   it('every "superseded by NNN" is answered by NNN naming it back', () => {
+    const withStatus = [...adrs.values()].filter((text) => statusBlock(text) !== '');
+    expectNonEmptyCorpus(withStatus, 'no ADR with a parseable Status block');
+
     const problems: string[] = [];
 
     for (const [file, text] of adrs) {
@@ -186,6 +232,8 @@ describe('ADR supersession', () => {
 
 describe('ADR evidence', () => {
   it('every ADR has a non-empty Evidence line', () => {
+    expectNonEmptyCorpus([...adrs.keys()], 'no ADR files found under docs/decisions/');
+
     const missing: string[] = [];
 
     for (const [file, text] of adrs) {
@@ -200,11 +248,44 @@ describe('ADR evidence', () => {
   });
 
   it('every ADR has a Status line', () => {
+    expectNonEmptyCorpus([...adrs.keys()], 'no ADR files found under docs/decisions/');
+
     const missing = [...adrs.entries()]
       .filter(([, text]) => !/^Status:[ \t]*\S/m.test(text))
       .map(([file]) => relative(file));
 
     expect(missing).toEqual([]);
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * A check on the checks
+ * ------------------------------------------------------------------ */
+
+describe('these checks', () => {
+  it('every check in this file proves it inspected something', async () => {
+    /* Yes, a check on the checks, and that is the point. Everything above
+       guards a document against drifting from the code; nothing guarded the
+       guards. A check whose corpus quietly empties keeps reporting pass, so
+       the file that exists to catch silent vacuity was the last place in the
+       repository still able to be silently vacuous.
+       This test reads its own source, which is why it is the only one that
+       cannot be fooled by a rename somewhere else. */
+    const self = await readFile(fileURLToPath(import.meta.url), 'utf8');
+
+    /* Split on `it(` at test-body indentation, so each block is one check. */
+    const blocks = self.split(/\n  it\(/).slice(1);
+    expectNonEmptyCorpus(blocks, 'no `it(` blocks found in docs.test.ts itself');
+
+    const withoutGuard = blocks
+      .map((block) => ({
+        title: /^'([^']+)'/.exec(block)?.[1] ?? '(untitled)',
+        guarded: block.includes('expectNonEmptyCorpus('),
+      }))
+      .filter((check) => !check.guarded)
+      .map((check) => check.title);
+
+    expect(withoutGuard).toEqual([]);
   });
 });
 

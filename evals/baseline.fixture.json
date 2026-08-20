@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-08-19T17:01:21.856Z",
+  "recordedAt": "2026-08-20T08:29:11.137Z",
   "models": {
     "judge": {
       "modelId": "fixture-judge",
@@ -10,33 +10,39 @@
   },
   "cases": {
     "cancellation-or-complaint-01": {
-      "mean": 0.585,
-      "stdDev": 0.03,
+      "mean": 0.884829,
+      "stdDev": 0,
       "n": 5,
       "scorers": {
-        "exact-fields": 0.5,
-        "llm-judge": 0.67
+        "exact-fields": 1,
+        "semantic-similarity": 0.689315,
+        "format-compliance": 1,
+        "llm-judge": 0.85
       }
     },
     "outage-escalation-01": {
-      "mean": 1,
+      "mean": 0.83521,
       "stdDev": 0,
       "n": 5,
       "scorers": {
-        "exact-fields": 1
+        "exact-fields": 1,
+        "semantic-similarity": 0.50563,
+        "format-compliance": 1
       }
     },
     "refund-damaged-item-01": {
-      "mean": 1,
+      "mean": 0.915917,
       "stdDev": 0,
       "n": 5,
       "scorers": {
-        "exact-fields": 1
+        "exact-fields": 1,
+        "semantic-similarity": 0.747751,
+        "format-compliance": 1
       }
     }
   },
   "totals": {
     "cases": 3,
-    "weightedScore": 0.89625
+    "weightedScore": 0.867791
   }
 }

@@ -7,6 +7,8 @@ import { CaseLoadError, loadCases } from './cases.js';
 import { validateExpectations } from './scorers/registry.js';
 import { callsTool, exactFields, matchesSchema } from './scorers/exact.js';
 import { llmJudge } from './scorers/judge.js';
+import { formatCompliance } from './scorers/format.js';
+import { semanticSimilarity } from './scorers/semantic.js';
 
 /* Temp dirs rather than committed fixtures: each test states the exact YAML it
    is about, so a reader never has to open a second file to understand it. The
@@ -246,7 +248,16 @@ describe('loadCases', () => {
     /* The check the repo's own examples must pass, or the README is lying:
        every expectation key is claimed, and no case is measured by nothing. */
     expect(() =>
-      validateExpectations(cases, [exactFields(), matchesSchema(), callsTool(), llmJudge()]),
+      validateExpectations(cases, [
+        exactFields(),
+        matchesSchema(),
+        callsTool(),
+        /* Constructing the embedder does not load a model — the pipeline is
+           lazy — so this stays an offline test. */
+        semanticSimilarity({ compare: 'summary' }),
+        formatCompliance(),
+        llmJudge(),
+      ]),
     ).not.toThrow();
   });
 });

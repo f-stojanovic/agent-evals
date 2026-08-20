@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-08-19T18:57:22.698Z",
+  "recordedAt": "2026-08-20T08:22:20.217Z",
   "models": {
     "judge": {
       "modelId": "claude-opus-5",
@@ -10,33 +10,39 @@
   },
   "cases": {
     "cancellation-or-complaint-01": {
-      "mean": 0.863,
-      "stdDev": 0.006,
+      "mean": 0.901786,
+      "stdDev": 0.013865,
       "n": 5,
       "scorers": {
-        "exact-fields": 0.75,
-        "llm-judge": 0.976
+        "exact-fields": 1,
+        "semantic-similarity": 0.757145,
+        "format-compliance": 1,
+        "llm-judge": 0.85
       }
     },
     "outage-escalation-01": {
-      "mean": 1,
-      "stdDev": 0,
+      "mean": 0.862016,
+      "stdDev": 0.021374,
       "n": 5,
       "scorers": {
-        "exact-fields": 1
+        "exact-fields": 1,
+        "semantic-similarity": 0.586047,
+        "format-compliance": 1
       }
     },
     "refund-damaged-item-01": {
-      "mean": 0.95,
-      "stdDev": 0.1,
+      "mean": 0.919274,
+      "stdDev": 0.005956,
       "n": 5,
       "scorers": {
-        "exact-fields": 0.95
+        "exact-fields": 1,
+        "semantic-similarity": 0.757823,
+        "format-compliance": 1
       }
     }
   },
   "totals": {
     "cases": 3,
-    "weightedScore": 0.95325
+    "weightedScore": 0.886273
   }
 }

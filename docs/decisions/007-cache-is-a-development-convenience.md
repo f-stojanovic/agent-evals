@@ -11,6 +11,14 @@ Evidence: Partial. The cache exists and its rules are covered by
           here has been seen to stay green through a model change it should
           have caught.
 
+          A static-analysis major upgrade increased the CI baseline from 3,868 to 
+          4,829 entries in a single commit. 25% increase from nothing changed about 
+          the code; new kinds of errors and differently named ones. The regeneration 
+          touched thirty thousand lines. I joined 2 months later and spent eight commits 
+          a whole day chasing down false positives of an issue that hadn’t existed in the 
+          ORM extension part of the new version. Two versions of the same tool don’t produce 
+          the same count, and nothing in the tooling mentioned it openly.
+
 ## Context
 
 Iterating on a suite means running it repeatedly against inputs that have not
@@ -29,7 +37,11 @@ assembled from replayed responses is a record of the cache's contents, not of th
 model's behaviour — it would stay green across a model upgrade, a prompt change,
 and a provider incident alike.
 
-<!-- FILIP: add the concrete experience here — what you saw, where, what it cost -->
+Our local static analysis had a cache running;CI did not. The project's own triage 
+notes started "if local doesn't pass and master does, be sure to clear the cache 
+before poking around", the value of which anyone who has run in a situation where a 
+stale cache had led them to find an imaginary violation understands. A worthwhile 
+item of value which was never worth anything as a decision maker.
 
 ## Decision
 

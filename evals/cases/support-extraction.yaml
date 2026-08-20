@@ -30,6 +30,13 @@
       urgency: medium
       customer_name: Maja Petrović
       requested_action: issue_refund
+    # Free text, so exact match is the wrong tool. Scored by meaning against
+    # these alternatives, any one of which a human would accept.
+    similar:
+      - A customer received a broken ceramic mug in order #48812 and wants a refund rather than a replacement.
+      - Order arrived damaged in transit; the customer is asking for their money back, not a new item.
+    # The subject is given a tool, so using it is the compliant path.
+    format: tool-call
 
 - id: outage-escalation-01
   description: >
@@ -56,3 +63,7 @@
       urgency: critical
       customer_name: Tom Weller
       requested_action: escalate_to_engineering
+    similar:
+      - Northgate Retail's checkout API has been returning 503 for 40 minutes, costing about £4k an hour, and needs engineering escalation before a campaign launch.
+      - A production outage on the checkout endpoint is losing the customer revenue and they want it escalated urgently.
+    format: tool-call

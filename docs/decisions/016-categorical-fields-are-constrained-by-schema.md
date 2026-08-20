@@ -34,10 +34,6 @@ model result.
 `intent` and `urgency` had the same shape of problem in a milder form: the
 prompt listed their allowed values in prose, and nothing enforced the list.
 
-<!-- FILIP: if you have watched a metric get blamed on a model or a team when
-     the specification was the thing at fault, that is the experience this ADR
-     generalises. What did it take to find out? -->
-
 ## Decision
 
 Categorical fields go in the subject's tool schema as enums. The model chooses

@@ -149,23 +149,23 @@ Verbatim, current subject, comparing against its own recorded baseline:
 ```
 # Eval run — live
 
-2026-08-19T18:56:28.445Z · 3 cases · 40.0s
+2026-08-20T08:23:15.059Z · 3 cases · 57.8s
 
 **GATE: PASS** — no regression against the baseline.
 
-| case                            | exact-fields | llm-judge | mean  | sd    | Δ vs baseline   | via       | cost    | ms    |
-| ------------------------------- | ------------ | --------- | ----- | ----- | --------------- | --------- | ------- | ----- |
-| 🟢 cancellation-or-complaint-01 | 0.85         | 0.93      | 0.889 | 0.030 | +0.134 (±0.085) | tool-call | $0.0786 | 39956 |
-| 🟢 outage-escalation-01         | 1.00         | —         | 1.000 | 0.000 | +0.250 (±0.050) | tool-call | $0.0246 | 20002 |
-| 🟢 refund-damaged-item-01       | 1.00         | —         | 1.000 | 0.000 | +0.250 (±0.050) | tool-call | $0.0237 | 20179 |
+| case                            | exact-fields | format-compliance | llm-judge | semantic-similarity | mean  | sd    | Δ vs baseline   | via       | cost    | ms    |
+| ------------------------------- | ------------ | ----------------- | --------- | ------------------- | ----- | ----- | --------------- | --------- | ------- | ----- |
+|    cancellation-or-complaint-01 | 1.00         | 1.00              | 0.86      | 0.79                | 0.911 | 0.014 | +0.010 (±0.068) | tool-call | $0.0926 | 57753 |
+|    outage-escalation-01         | 1.00         | 1.00              | —         | 0.54                | 0.846 | 0.008 | -0.016 (±0.071) | tool-call | $0.0326 | 19196 |
+|    refund-damaged-item-01       | 1.00         | 1.00              | —         | 0.76                | 0.921 | 0.005 | +0.002 (±0.057) | tool-call | $0.0303 | 19218 |
 
 ## Totals
 
-- cases: 3 · below threshold: 1 of 3 · errored 0
-- weighted score: **0.972**
-- latency: p50 20179ms · p95 39956ms · max 39956ms
-- cost: **$0.1268** — subject $0.0723, judge $0.0545
-- tokens: 15030 in / 1813 out
+- cases: 3 · below threshold: 2 of 3 · errored 0
+- weighted score: **0.881**
+- latency: p50 19218ms · p95 57753ms · max 57753ms
+- cost: **$0.1555** — subject $0.0936, judge $0.0620
+- tokens: 16095 in / 3018 out
 
 ### Output format distribution
 
@@ -181,24 +181,67 @@ Verbatim, current subject, comparing against its own recorded baseline:
 
 ### Assumptions
 
-This run used 3 uncalibrated constants:
+This run used 4 uncalibrated constants:
   llm-judge.threshold = 0.7 — median judge score at or above which a case passes. …
+  semantic-similarity.threshold = 0.8 — raw cosine above which a response counts as matching. …
   baseline.floor = 0.05 — absolute score drop tolerated before a case is flagged. …
   baseline.z = 2 — standard errors of extra allowance granted to a noisy case. …
 ```
 
-**`below threshold: 1 of 3` and the gate still passes.** Two different
-questions, so they are printed as two different lines. The tally counts cases
-under each scorer's own cutoff — `exactFields` defaults to 1.0, so 0.85 is
-"below threshold". The gate asks only whether anything got *worse* than the
-baseline. Nothing did, so `GATE: PASS` and exit 0. A suite can be usefully green
-while cases are imperfect; that is the normal state of an eval suite, and an
-earlier version of this report made it look like failure.
+**`below threshold: 2 of 3` and the gate still passes.** Two different
+questions, printed as two lines. The tally counts cases under each scorer's own
+cutoff; the gate asks only whether anything got *worse* than the baseline. Here
+the tally is mostly a statement about the semantic scorer's uncalibrated 0.8
+threshold, not about the model — see below.
 
-**The `via` column is per case.** Under the free-text subject it read `fenced
-5/5`, `fenced 4/5` and `json 5/5` on three cases sharing one system prompt — the
-envelope tracked the input, not the instruction. A suite-wide total would have
-averaged that away.
+**The `via` column is per case.** Under the earlier free-text subject it read
+`fenced 5/5`, `fenced 4/5` and `json 5/5` on three cases sharing one system
+prompt: the envelope tracked the input, not the instruction. A suite-wide total
+would have averaged that away.
+
+## Choosing a scorer by field type
+
+Both of this repository's scoring mistakes were the same mistake, pointing in
+opposite directions, and both looked like a scorer problem:
+
+| | the field is | it was specified as | what you see |
+| --- | --- | --- | --- |
+| what happened | categorical | free text | correct answers score 0, systematically |
+| what almost happened next | free text | categorical | the model forced to pick a wrong-but-listed value |
+
+`requested_action` was the first. Fixing it by constraining the field is
+[ADR 016](docs/decisions/016-categorical-fields-are-constrained-by-schema.md) —
+and applying that lesson without a stopping rule produces the second error,
+because after it every scored field was an enum. A triage agent legitimately
+writes a one-line `summary`, and there is no set of six sentences it should be
+choosing between.
+
+So the scorer follows the field
+([ADR 019](docs/decisions/019-the-scorer-follows-the-field-type.md)):
+
+- **Enum fields** → `exactFields`. The set is closed and the API rejects
+  anything outside it, so equality is the right question. All three cases score
+  1.00 here, where free text scored 0.75.
+- **Free text** → `semanticSimilarity` projected onto that one field, and
+  `llmJudge` where the rubric needs prose. Never embed the whole payload: the
+  encoder spends its capacity on braces and key names identical in every
+  response.
+- **Format** → a per-case declared assertion (`expect.format`), not a global
+  metric. The suite-wide `via` distribution stays a metric and grades nothing.
+
+The semantic numbers are worth looking at squarely. Three summaries that are
+plainly correct on reading score **0.54, 0.76 and 0.79** raw cosine against
+hand-written acceptable paraphrases. That band is what sentence encoders do, it
+is why [ADR 010](docs/decisions/010-uncalibrated-constants-are-counted.md)
+deleted the rescale that used to hide it, and it means the default 0.8 threshold
+currently marks all three as below threshold. That number is a guess, it is
+declared as one in every report, and calibrating it against labelled pairs is
+outstanding work.
+
+Semantic similarity also cannot catch a fluent lie: a summary confidently wrong
+about the order number still lands close to the expected paraphrase. The enum
+fields constrain the facts; the semantic score only constrains what the sentence
+is about.
 
 ## An eval that measures nothing must not report green
 
@@ -328,12 +371,13 @@ overstatement this project exists to prevent.
 - [x] Both wiring guards: unclaimed keys, and cases nothing measures
 - [x] Score contract enforcement — finite, 0..1, correctly attributed
 - [x] Extraction with the route recorded; ambiguity refused rather than guessed
-- [x] Scorers registered by the example suite: `exactFields`, `matchesSchema`,
-      `callsTool`, `llmJudge`
-- [x] Scorers that ship and are tested but that no run has yet invoked —
-      formatCompliance (needs `expect.format` on a case) and semanticSimilarity
-      (needs `expect.similar`, and a downloaded encoder)
+- [x] Scorers registered by the example suite: `exactFields`, `callsTool`,
+      `formatCompliance`, `semanticSimilarity`, `llmJudge`
+- [x] `matchesSchema` ships and is tested; it is registered but skipped, because
+      no example case declares `expect.schema`
 - [x] Judge calibration against human labels (`npm run calibrate`)
+- [x] Documentation checks as tests (`src/docs.test.ts`), including a check that
+      each check inspected a non-empty corpus
 - [x] `models.lock.json` — model changes are explicit and reviewable
 - [x] Runner — concurrency, sampling, retry with jitter, timeouts, disk cache,
       cost accounting
@@ -370,19 +414,19 @@ labels are contested judgement calls the author flagged at the time.
 apart gave 0.031 and 0.019, and the sign of the bias flipped. At n=8 the figure
 is a range, not a number.
 
-**The committed fixtures are hand-authored, not captured.** The per-push CI gate
-replays bare JSON, while the real subject emits a markdown fence two thirds of
-the time. So the fixture run exercises the harness on a format distribution the
-live subject does not have. Re-recording them from a real run's artifacts is a
-known task, not a subtlety.
-
 **Neither GitHub workflow has ever executed.** There is no remote. Every run in
 this README was local.
 
-**The embedding scorer has never run.** `models.lock.json` has no `embedding`
-entry, the model has never been downloaded, and the one integration test is
-skipped unless `RUN_MODEL_TESTS=1`. Every semantic score ever produced here came
-from a fake embedder.
+**The semantic threshold is uncalibrated and currently fails everything.**
+Three correct summaries score 0.54–0.79 raw cosine; the default cutoff is 0.8.
+The report declares it as a guess on every run, and calibrating it against
+labelled pairs — the way the judge was calibrated — has not been done.
+
+**The baseline does not record the scorer set.** It records model identity and
+refuses a comparison across a model change. Registering a new scorer changes
+what the case mean averages, which surfaces as a spurious regression on the run
+that introduces it — as it did here, 0.953 → 0.886 with nothing getting worse.
+The fix is the same mechanic already used for models, and it is not built.
 
 **The judge model pin is weak.** `claude-opus-5` is a moving target on the
 provider's side: the same id can be served by a different build than last month,

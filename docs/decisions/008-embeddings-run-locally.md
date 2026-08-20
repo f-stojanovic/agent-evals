@@ -2,18 +2,23 @@
 
 Date: 2026-08-19
 Status: Accepted
-Evidence: None for the decision itself. The embedding model has never been
-          downloaded or run: `models.lock.json` now exists and is committed,
-          but it holds only a `judge` entry written by the live runs — there is
-          no `embedding` slot in it, because nothing has ever loaded the
-          encoder. The one integration test is skipped unless
-          RUN_MODEL_TESTS=1, and that has never been set. Every semantic score
-          in this repository came from a fake embedder, and
-          `semanticSimilarity` is not registered by any run.
-          The cost side is observed: `npm audit` reports two high-severity
+Evidence: MEASURED, 2026-08-20 — the first time this ADR has had any. The
+          encoder ran: `Xenova/all-MiniLM-L6-v2`, revision
+          `751bff37182d3f1213fa05d7196b954e230abad9`, dtype fp32, resolved from
+          the Hugging Face API and written to the `embedding` slot of the
+          committed `models.lock.json`. Every prior version of this line said
+          the model had never been downloaded.
+          First-run cost: the download and load added roughly 40 seconds to a
+          suite that otherwise takes ~20 seconds per case, one time. Subsequent
+          runs load from the local cache and the semantic scorer contributes no
+          measurable wall-clock next to the API calls, and no cost at all —
+          `costOf` prices it at exactly zero, which is the claim this ADR is
+          about.
+          Still unobserved: a CI failure avoided that a hosted embedding key
+          would have caused. The argument for local embeddings is about a
+          failure mode that has not yet had the chance to happen here.
+          The cost side remains observed: `npm audit` reports two high-severity
           transitive advisories from this dependency with no upstream fix.
-          What would count: one run of the real encoder, and one CI failure
-          avoided that a hosted key would have caused.
 
 ## Context
 
@@ -27,8 +32,6 @@ and false alarms are what get gates switched off. A hosted embedding call fails 
 an expired key, a rate limit, a provider incident, a network policy, or a fork
 whose contributors have no secrets. None of those are the model under test getting
 worse, and all of them turn the build red.
-
-<!-- FILIP: add the concrete experience here — what you saw, where, what it cost -->
 
 Embeddings are also the one place in this pipeline where a small local model is
 genuinely good enough: a 22M-parameter sentence encoder runs in milliseconds on

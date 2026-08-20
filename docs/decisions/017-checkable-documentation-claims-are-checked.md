@@ -28,9 +28,12 @@ third paragraph, because they know what the document is supposed to say.
 Round three made this unarguable. All three divergences were introduced by the
 same pass that correctly updated other parts of the same files.
 
-<!-- FILIP: if you have a case where a documented invariant drifted from the
-     code and the drift was found by a person rather than a build step, that is
-     the experience this generalises — especially if it was found late. -->
+But these were rules that I enforced, not rules that I wrote. The team had sixty 
+architecture decision records, and we had quite a few of them there are duplicates: 
+Once as descriptive text, once as a static-analysis rule or as layer-dependency 
+configuration that blocked the build. I never had to remember one. I only know that 
+I violated one when the ci report told me I did. I don’t remember the content of any 
+ADR that only exists as descriptive text.
 
 ## Decision
 

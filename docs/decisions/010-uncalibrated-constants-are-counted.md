@@ -26,10 +26,13 @@ matched no published similarity figure, and could not be sanity-checked against
 anything. The floor and ceiling were both defended in comments at the time. Both
 were made up.
 
-<!-- FILIP: add the concrete experience here — what you saw, where, what it cost -->
-
-The honest response is not to remove the constants. A harness needs defaults. It
-is to refuse to let them disappear into the code.
+I created a flat, zeroing out fee with some numbers I completely made up (like 30 cents 
+and some kind of $1 cap where if below $1, fee goes away – which I then remove 2 months 
+later as a “per-entity config” that no one could trace where the hell the dollar came from). 
+Default fee then got set to 0 once inherited by non-prod and started charging fees nobody 
+was looking for 1 month later. So that was 3 edits over 4 months, based off of choosing 2 
+numbers in 10 seconds. The honest response is not to remove the constants. A harness needs  
+defaults. It is to refuse to let them disappear into the code.
 
 ## Decision
 

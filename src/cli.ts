@@ -7,6 +7,8 @@
 import { loadCases } from './cases.js';
 import { validateExpectations } from './scorers/registry.js';
 import { callsTool, exactFields, matchesSchema } from './scorers/exact.js';
+import { formatCompliance } from './scorers/format.js';
+import { semanticSimilarity } from './scorers/semantic.js';
 import { llmJudge } from './scorers/judge.js';
 import { fixtureJudge, fixtureSubject, loadFixtures } from './fixtures.js';
 import { anthropicJudge } from './scorers/judge.js';
@@ -98,7 +100,16 @@ export async function main(argv: readonly string[]): Promise<number> {
 
   const judge = options.fixture ? fixtureJudge(fixtures ?? new Map()) : anthropicJudge();
 
-  const scorers: Scorer[] = [exactFields(), matchesSchema(), callsTool(), llmJudge({ judge })];
+  const scorers: Scorer[] = [
+    exactFields(),
+    matchesSchema(),
+    callsTool(),
+    /* Projected onto `summary`, the one field with no single correct wording.
+       Embedding the whole payload would measure punctuation and key names. */
+    semanticSimilarity({ compare: 'summary' }),
+    formatCompliance(),
+    llmJudge({ judge }),
+  ];
 
   validateExpectations(cases, scorers);
 

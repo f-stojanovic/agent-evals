@@ -48,6 +48,10 @@ expect:
   acceptable:
     intent: [complaint, billing_question]
     urgency: [medium]
+  similar:
+    - A long-running export bug has eroded the customer's trust and they are asking what the notice period and refund terms are on the annual plan.
+    - Customer is frustrated by repeated data errors and is enquiring about cancelling mid-term.
+  format: tool-call
   rubric: >
     Extract {intent, urgency, customer_name, requested_action}. The preferred
     intent is `cancellation_request`; the alternatives listed under `acceptable`

@@ -32,7 +32,13 @@ name is a real collision. ADR 002 borrows the baseline mechanism from that world
 correctly. This rule was borrowed along with it and did not survive the change of
 dispatch model.
 
-<!-- FILIP: add the concrete experience here — what you saw, where, what it cost -->
+Twice this summer I shipped a guard, correct when tested alone, incorrect in production. 
+The first stopped payment overruns: reviewer calculated it would catch around 820 good 
+transactions per month. The second prevented payment retry, which unfortunately also 
+contained the fulfillment events, and was what I termed a 'zombie guard' in the commit 
+removing it: I removed it 3 days after it went in and added anotherguardthat only prevented 
+the invalid part. They both passed the test suite. They both passed static analysis. 
+Neither was detected by any machine at all; and I wrote each guard with a justification.
 
 It also blocked the use case it was supposed to enable. The `name` override on the
 scorer factories exists so a suite can register `exactFields` twice — strict on

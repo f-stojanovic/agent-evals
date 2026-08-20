@@ -5,13 +5,15 @@ Status: Accepted
 Evidence: None for the split; partial for the fixture run. Neither workflow
           has ever executed — this repository has no git remote, so nothing has
           run on GitHub Actions. The fixture eval has only been run locally.
-          The fixtures remain HAND-AUTHORED, not captured from a model, and the
-          live run of 2026-08-19 showed exactly what that costs: the real
-          subject fenced 10 of 15 samples, while every committed fixture is
-          bare JSON. The per-push gate is therefore replaying a format
-          distribution the real subject does not have.
-          What would count: one push that runs ci.yml, one nightly eval-live
-          run, and fixtures re-recorded from the artifacts of an actual run.
+          The fixtures are now RECORDED — captured verbatim from a live
+          `claude-sonnet-5` run on 2026-08-20 and declaring it in a typed
+          provenance field (ADR 015). They were hand-authored until then, and
+          the live run of 2026-08-19 showed what that cost: the real subject
+          fenced 10 of 15 samples while every committed fixture was bare JSON,
+          so the per-push gate replayed a format distribution the subject did
+          not have.
+          What would still count: one push that actually runs ci.yml, and one
+          nightly eval-live run.
 
 ## Context
 
@@ -32,7 +34,13 @@ There are two different questions here and they were being treated as one.
 "Did this change break the harness?" is deterministic, free, and belongs on
 every push. "Did the model get worse?" is none of those.
 
-<!-- FILIP: add the concrete experience here — what you saw, where, what it cost -->
+I made use of this split, I didn't engineer it. Static analysis, formatting, and the 
+full test suite had a green light for every push; the smoke tests, requiring a real 
+deployed app and the entire checkout process, were only ever triggered manual dispatch 
+for. The first tier which could run hundreds of times per day ended up defining for the 
+team what it means for "it" to break. The second would run when some part of the system's 
+release date felt imminent, which inevitably meant that the check would trigger late - a 
+compromise they seemed to be ok with.
 
 ## Decision
 
@@ -56,11 +64,12 @@ scores from different judge models are not comparable, so one shared file would
 fail a mismatch check on every run of whichever workflow did not record it.
 
 The fixtures hold the subject still — the same device `evals/calibration/` uses
-while measuring something else. Every one of them is currently hand-authored,
-which each declares in a required `provenance` field and the report prints on
-every run ([ADR 015](015-test-data-provenance-is-typed.md)). An earlier version
-of this paragraph claimed they were captured from a real model; they were not,
-and that sentence contradicted this record's own Evidence line for two commits.
+while measuring something else. Each declares where it came from in a required
+`provenance` field, and the report prints the tally on every run
+([ADR 015](015-test-data-provenance-is-typed.md)). They are now captured from a
+live run; they were hand-authored until 2026-08-20, and an earlier version of
+this paragraph claimed otherwise while they still were — a sentence that
+contradicted this record's own Evidence line for two commits.
 
 The judge is replayed too, so the self-consistency and disagreement paths stay
 inside the per-push gate rather than being exercised only at night.

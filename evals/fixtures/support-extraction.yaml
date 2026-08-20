@@ -1,89 +1,76 @@
 # Fixed subject outputs, replayed by the per-push CI run.
 #
-# EVERY ENTRY HERE IS HAND-AUTHORED. Each carries a required `provenance` field
-# saying so, and the report prints the tally on every run. An earlier version of
-# this header claimed these were "frozen responses, not hand-written mocks",
-# which was false — see ADR 015 for why that claim is now a typed field rather
-# than a sentence.
+# RECORDED, not hand-authored. Every entry below was captured verbatim from a
+# live `claude-sonnet-5` run on 2026-08-20, and each carries a `provenance`
+# field saying so. An earlier generation of this file WAS hand-authored while
+# claiming otherwise in a comment — see ADR 015, which is why provenance is now
+# a required typed field rather than a sentence.
 #
-# Replaying them lets the gate that runs on every push prove the HARNESS works —
-# sampling, extraction, scoring, the baseline comparison, the exit code —
-# without spending money, needing a secret, or returning a different answer each
-# time. It does NOT prove the model works, and it does not reproduce the format
-# distribution a real model produces: the live run of 2026-08-19 fenced two
-# thirds of its samples, while everything below is bare JSON. Proving the MODEL
-# works is the scheduled live run's job. See ADR 013.
+# Replaying real outputs lets the per-push gate prove the HARNESS works —
+# sampling, extraction, every registered scorer, the baseline comparison, the
+# exit code — without spending money, needing a secret, or returning a different
+# answer each time. It does not prove the model still works; that is the
+# scheduled live run's job (ADR 013).
 #
-# `judge` holds the verdicts the judge returned for this output when it was
-# recorded. Replaying them keeps self-consistency, median selection and the
-# disagreement path inside the per-push gate, which are the parts of the judge
-# most likely to break under a refactor.
+# Re-record with: npm run eval, then copy the outputs out of .artifacts/run.json.
 
-- caseId: refund-damaged-item-01
+- caseId: cancellation-or-complaint-01
   provenance:
-    kind: hand-authored
-    author: Filip Stojanović
-    note: >
-      Written by hand to exercise the harness deterministically. Not captured
-      from a model run, and not representative of real output formatting.
+    kind: recorded
+    model: claude-sonnet-5
+    capturedAt: '2026-08-20'
   output:
-    model: subject-model-v1
-    inputTokens: 412
-    outputTokens: 48
-    latencyMs: 940
-    text: |
-      {"intent":"refund_request","urgency":"medium","customer_name":"Maja Petrović","requested_action":"issue_refund"}
+    model: claude-sonnet-5
+    inputTokens: 1061
+    outputTokens: 195
+    latencyMs: 4189
+    toolCalls:
+      - name: record_extraction
+        input:
+          intent: cancellation_request
+          urgency: high
+          customer_name: "A. Novak"
+          requested_action: explain_cancellation_terms
+          summary: "The customer is frustrated that the report export has been silently dropping rows for three months and wants to know the annual plan's notice period and refund policy for leaving mid-term."
+  judge:
+      - score: 0.85
+        confidence: 0.75
+        reason: "customer_name is exactly \"A. Novak\" (no fabrication), intent is the preferred `cancellation_request`, and requested_action is sensible. Only deviation is urgency \"high\" rather than the reviewed \"medium\", a minor disagreement on the least-weighted field."
 
 - caseId: outage-escalation-01
   provenance:
-    kind: hand-authored
-    author: Filip Stojanović
-    note: >
-      Written by hand to exercise the harness deterministically. Not captured
-      from a model run, and not representative of real output formatting.
+    kind: recorded
+    model: claude-sonnet-5
+    capturedAt: '2026-08-20'
   output:
-    model: subject-model-v1
-    inputTokens: 455
-    outputTokens: 52
-    latencyMs: 1120
-    text: |
-      {"intent":"technical_issue","urgency":"critical","customer_name":"Tom Weller","requested_action":"escalate_to_engineering"}
+    model: claude-sonnet-5
+    inputTokens: 1100
+    outputTokens: 205
+    latencyMs: 3483
+    toolCalls:
+      - name: record_extraction
+        input:
+          intent: technical_issue
+          urgency: critical
+          customer_name: "Tom Weller"
+          requested_action: escalate_to_engineering
+          summary: "Tom Weller reports that all /v2/checkout API calls are returning 503 errors, causing significant revenue loss ahead of a major campaign launch, and is requesting urgent escalation."
 
-# The deliberately ambiguous case. The recorded output picks `complaint`, which
-# the case lists under `acceptable`, and the recorded verdicts disagree with
-# each other — which is the correct behaviour on a case two humans would score
-# differently, and worth keeping in the replay so the disagreement path stays
-# exercised.
-- caseId: cancellation-or-complaint-01
+- caseId: refund-damaged-item-01
   provenance:
-    kind: hand-authored
-    author: Filip Stojanović
-    note: >
-      Written by hand to exercise the harness deterministically. Not captured
-      from a model run, and not representative of real output formatting.
+    kind: recorded
+    model: claude-sonnet-5
+    capturedAt: '2026-08-20'
   output:
-    model: subject-model-v1
-    inputTokens: 508
-    outputTokens: 56
-    latencyMs: 1310
-    text: |
-      {"intent":"complaint","urgency":"medium","customer_name":"A. Novak","requested_action":"explain_cancellation_terms"}
-  judge:
-    - score: 0.7
-      confidence: 0.6
-      reason: >
-        Intent `complaint` is listed as defensible and customer_name is exactly
-        "A. Novak" with no invented first name, which is the failure mode the
-        rubric weights most heavily. Urgency `medium` is the acceptable
-        alternative rather than the preferred `high`.
-    - score: 0.6
-      confidence: 0.5
-      reason: >
-        Reads the surface request rather than where the customer is heading.
-        Nothing is fabricated and the requested action is right, so this is a
-        defensible reading rather than a wrong one.
-    - score: 0.75
-      confidence: 0.55
-      reason: >
-        All four fields are defensible under the rubric's own list of accepted
-        alternatives; only the preferred intent and urgency differ.
+    model: claude-sonnet-5
+    inputTokens: 1058
+    outputTokens: 191
+    latencyMs: 3799
+    toolCalls:
+      - name: record_extraction
+        input:
+          intent: refund_request
+          urgency: medium
+          customer_name: "Maja Petrović"
+          requested_action: issue_refund
+          summary: "Customer Maja Petrović received order #48812 with a shattered ceramic mug due to damaged packaging and is requesting a full refund instead of a replacement."

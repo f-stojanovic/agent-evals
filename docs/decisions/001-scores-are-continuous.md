@@ -45,8 +45,6 @@ Thresholds become a reporting decision rather than a measurement one. Because th
 continuous value is stored, "what would the gate have said at 0.7?" can be asked
 of runs already recorded. A stored boolean bakes the threshold in permanently.
 
-<!-- FILIP: add the concrete experience here — what you saw, where, what it cost -->
-
 The cost is NaN. A ratio scorer with an empty denominator produces 0/0, which
 passes every naive range guard and poisons every mean it reaches, ending up in a
 baseline as `null`. `invokeScorer` exists mostly to reject non-finite values at

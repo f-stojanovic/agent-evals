@@ -34,10 +34,12 @@ and worse, it tells the reader that the repository's other claims were not
 checked either. Of everything in this project, it is the one category of error
 that invalidates the rest.
 
-<!-- FILIP: if you have found a comment or a README asserting something about a
-     dataset that turned out not to be true — where it came from, when it was
-     refreshed, what it was filtered on — that is the experience this ADR
-     generalises. What did the wrong belief cost before anyone noticed? -->
+The hardcoded date test wasn't just using a value, it was making an assertion: it 
+said this date was in the future, because it was, when written. That assertion simply 
+became untrue without anyone touching the file, and yet it didn't break Anything™ in 
+the test. And now it just continued to pass with the wrong values for a duration I can’t 
+figure out fromgit. That’s the character of the failure: not wrong data, but a claim which 
+was true when written and was never re-validated.
 
 ## Decision
 
@@ -57,7 +59,11 @@ recorded one cannot omit `capturedAt`. Passing hand-written data off as a
 recording now requires deliberately writing `kind: 'recorded'` and inventing a
 capture date, rather than leaving an adjective unchallenged.
 
-Every existing fixture and calibration case is marked `hand-authored`.
+Every entry declares which it is. The calibration cases are `hand-authored`.
+The fixtures were too when this record was written; they have since been
+re-recorded from a live run and now declare `recorded`, with a model and a
+capture date — which is the first time the `recorded` arm has been used by
+anything in the repository.
 
 The report prints the tally on every run, and says so outright when nothing was
 recorded: *"every input was written by hand. This run exercised the harness,
@@ -85,10 +91,13 @@ can still write `kind: 'recorded'` on invented data. This raises the cost of
 being wrong from "leave a comment unchecked" to "type a false statement into a
 required field", which is a real difference and not a guarantee.
 
-**It does not fix the underlying gap.** The fixtures are still hand-authored,
-so the per-push gate still replays a format distribution the live subject does
-not have — the live run fenced two thirds of its samples and every fixture is
-bare JSON. This ADR makes that visible on every run instead of fixing it.
+**It made the underlying gap visible, and the gap was then closed separately.**
+When this was written the fixtures were hand-authored, so the per-push gate
+replayed a format distribution the live subject did not have. Printing that on
+every run is what made it obvious enough to fix: the fixtures are now captured
+from a live `claude-sonnet-5` run and the report says
+`3 recorded from claude-sonnet-5`. The typed field did not do the fixing — it
+did the not-letting-anyone-forget.
 
 ## Alternatives rejected
 

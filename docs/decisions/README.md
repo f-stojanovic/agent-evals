@@ -19,6 +19,8 @@
 | [015](015-test-data-provenance-is-typed.md) | Test-data provenance is typed, not described | Accepted |
 | [016](016-categorical-fields-are-constrained-by-schema.md) | Categorical fields are constrained by schema, not requested in prose | Accepted |
 | [017](017-checkable-documentation-claims-are-checked.md) | Documentation claims that can be checked mechanically are checked mechanically | Accepted |
+| [018](018-a-check-must-prove-it-inspected-something.md) | A check must prove it inspected something | Accepted |
+| [019](019-the-scorer-follows-the-field-type.md) | The scorer follows the field type | Accepted |
 
 ## Two axes: Status and Evidence
 
@@ -40,7 +42,9 @@ justification described a mechanism the system does not have.
 Five of these records' claims are now checked by `src/docs.test.ts` on every
 push — dangling doc links, scorers advertised but never registered, undocumented
 baseline files, one-way supersession, and a missing Evidence line
-([ADR 017](017-checkable-documentation-claims-are-checked.md)). What is left for
+([ADR 017](017-checkable-documentation-claims-are-checked.md)) — and each check
+must prove it inspected a non-empty corpus before it is allowed to pass
+([ADR 018](018-a-check-must-prove-it-inspected-something.md)). What is left for
 a human is what a machine cannot decide: whether an Evidence line is honest and
 whether the reasoning holds.
 

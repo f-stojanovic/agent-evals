@@ -28,7 +28,12 @@ it is indistinguishable from the true positive the harness exists to find. The
 concrete cost is an afternoon spent bisecting prompt changes to explain a
 regression caused by `npm update`.
 
-<!-- FILIP: add the concrete experience here — what you saw, where, what it cost -->
+The CI-baseline, in a single-shot static-analysis major upgrade, went from 3868 to 4829 
+entries (increase of 25%). This was with no change in code; it was entirely an increased 
+categorization or retargeted messages, in about 30k lines. I was a new employee there for 
+2 months when they landed that. Spent a full day and 8 commits chasing down false positives 
+due to a bug in their new ORM extension.  It’s not like the two versions of this tool were 
+comparable. And the tool sure as heck was’t advertising it.
 
 ## Decision
 

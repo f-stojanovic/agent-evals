@@ -50,8 +50,13 @@ Three reasons drive the exclusion, and each rules out a different thing:
 that matter. A diff a human skims is a control; a diff a human scrolls past is a
 rubber stamp, and a rubber stamp is worse than no gate because it looks like one.
 
-<!-- FILIP: add the concrete experience here — what you saw, where, what it cost -->
-
+I saw an architectural rule engine with 38,835 baseline entries across three files 
+ship, be demoted to non-blocking seven weeks later and replaced entirely three weeks 
+after that. No human could diff something that big and no human did, so it just churned 
+along creating new violations behind a gate that everyone had implicitly stopped reading. 
+The replacement shipped with 3,147 entries and by months later I could still find 
+itwhitelistingtwo entirely deleted datastores, purely by chance and because the file was 
+tiny enough that one obviously wrong line stood out as… well, obviously wrong.
 
 **PII.** Real eval inputs are customer emails, support tickets, scraped pages.
 Provider responses quote them back. Committing raw output to a repository — often

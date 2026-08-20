@@ -19,7 +19,7 @@ export const SUBJECT_MODEL = 'claude-sonnet-5';
 
 /** Bumped whenever the prompt or schema changes, because the cache keys on it
  *  and reusing cached responses would record the old subject's scores. */
-export const SUBJECT_ID = 'support-extraction@2';
+export const SUBJECT_ID = 'support-extraction@3';
 
 /**
  * THE CATEGORICAL FIELDS ARE ENUMS IN A SCHEMA, NOT REQUESTS IN PROSE.
@@ -35,7 +35,12 @@ export const SUBJECT_ID = 'support-extraction@2';
  * prompt listed the values and nothing enforced them. They move here too, so
  * the set the model may answer from is the set the case is written against.
  *
- * `customer_name` stays free text, because it genuinely is.
+ * `customer_name` stays free text, because it genuinely is. So does `summary`,
+ * and for the opposite reason to `requested_action`: a one-sentence description
+ * of a ticket has no single correct wording, so constraining it to a set would
+ * be the same mistake inverted — forcing free text into a taxonomy rather than
+ * grading a taxonomy as free text. It is scored by meaning, not by string
+ * equality. See ADR 019.
  */
 export const INTENTS = [
   'refund_request',
@@ -66,7 +71,7 @@ const EXTRACT_TOOL: Anthropic.Tool = {
   input_schema: {
     type: 'object',
     additionalProperties: false,
-    required: ['intent', 'urgency', 'customer_name', 'requested_action'],
+    required: ['intent', 'urgency', 'customer_name', 'requested_action', 'summary'],
     properties: {
       intent: { type: 'string', enum: [...INTENTS] },
       urgency: {
@@ -81,6 +86,12 @@ const EXTRACT_TOOL: Anthropic.Tool = {
           'return exactly that. Never invent a first name.',
       },
       requested_action: { type: 'string', enum: [...REQUESTED_ACTIONS] },
+      summary: {
+        type: 'string',
+        description:
+          'One sentence describing what this email is about, for a human triaging ' +
+          'a queue. Say what happened and what the customer wants.',
+      },
     },
   },
 };
@@ -88,7 +99,8 @@ const EXTRACT_TOOL: Anthropic.Tool = {
 const SYSTEM_PROMPT = `You extract structured data from customer support emails.
 
 Call record_extraction exactly once with what the email asks for. Choose the
-closest value from each enum; do not explain your choice.`;
+closest value from each enum; do not explain your choice. Write the summary in
+one plain sentence.`;
 
 export type SupportExtractionOptions = {
   readonly model?: string;

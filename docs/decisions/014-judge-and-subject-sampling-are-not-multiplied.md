@@ -12,9 +12,6 @@ Evidence: The judge's own spread is now measured: `npm run judge:variance` at
           was removed before a live run happened. The artificial-stability
           argument below is arithmetic, not observation. What would count:
           recording one baseline both ways and comparing the recorded stdDev.
-          <!-- FILIP: if you have seen a metric look healthier than production
-               because of how it was aggregated rather than because anything
-               improved, that is the experience this ADR generalises. Add it. -->
 
 ## Context
 
