@@ -506,12 +506,13 @@ apart differed by about a third of its value, and the sign of the bias flipped
 between them. At n=8 the figure is a range, not a number — read the generated
 block as one draw.
 
-**The live gate has run on GitHub Actions, and it failed — correctly.** A
-`workflow_dispatch` of `eval-live` refused the committed baseline with
-*"recorded in baseline format v1; this build writes v2 … re-record it"* and
-exited 1. That is the guard from ADR 009/019 firing on real infrastructure
-rather than on a laptop, and it is the first evidence that the gate does its job
-outside this machine. `ci.yml` passes on push.
+**`eval-live` has never completed successfully on GitHub Actions.** Its one
+dispatch failed — correctly — refusing a genuinely stale committed baseline with
+*"recorded in baseline format v1; this build writes v2 … re-record it"*. That
+is the guard firing on real infrastructure rather than on a laptop, and it is
+the only evidence so far that the gate works off this machine. The stale
+baseline is fixed; a green live run has not yet happened, and cannot until the
+API account has credit. `ci.yml` passes on every push.
 
 **The semantic threshold is uncalibrated, and calibration failed.** Against 10
 hand-labelled pairs the correct and incorrect groups do not separate at all
@@ -520,11 +521,12 @@ constant is still declared as a guess in every report. That is a limit of the sc
 labels — see "A semantic scorer cannot catch a fluent lie" above. The labels are
 one annotator's and are expected to be reviewed.
 
-**The live baseline is stale and needs one paid run.** It is still baseline
-format v1, recorded before the scorer set was part of the record and before the
-fourth case existed. `npm run eval` refuses to compare against it and says so.
-Re-record with `npm run eval -- --update-baseline`. The fixture gate is green
-and current.
+**The live gate cannot currently run: the account is out of API credit.**
+`npm run eval` errors every case on a 400 from the provider. The harness
+classifies that as errored rather than failed, so it does not enter the
+baseline and is not reported as a quality result — but it does mean the live
+gate is unverifiable until the account is topped up. The committed baseline is
+current (v2, five cases) and the fixture gate is green.
 
 **The judge model pin is weak.** `claude-opus-5` is a moving target on the
 provider's side: the same id can be served by a different build than last month,
