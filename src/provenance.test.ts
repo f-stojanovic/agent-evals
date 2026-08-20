@@ -79,7 +79,7 @@ describe('loadFixtures', () => {
     expect(fixtures.get('a')?.provenance).toEqual({ kind: 'hand-authored', author: 'Filip' });
   });
 
-  it('records which fixtures are captured and which are still hand-written', async () => {
+  it('every committed fixture is captured from a live run, and says which model', async () => {
     const dir = fileURLToPath(new URL('../evals/fixtures', import.meta.url));
 
     const fixtures = await loadFixtures(dir);
@@ -91,13 +91,12 @@ describe('loadFixtures', () => {
        without budget for a live run and says so rather than blending in.
        Asserting the exact split is what stops a hand-written fixture being
        quietly relabelled — or a captured one being quietly replaced. */
-    expect(recorded).toHaveLength(3);
+    /* All five are now captured. Asserting it exactly — rather than "at least
+       one is recorded" — is what stops a hand-written fixture being added back
+       without anyone deciding to. */
+    expect(recorded).toHaveLength(provenances.length);
     expect(recorded.every((p) => p.kind === 'recorded' && p.model === 'claude-sonnet-5')).toBe(true);
-    /* Two cases were added without budget for a live run. Asserting the exact
-       split is what stops a hand-written fixture being quietly relabelled, and
-       what will fail loudly the moment they are re-recorded — which is the
-       reminder to update this number rather than a nuisance. */
-    expect(provenances.filter((p) => p.kind === 'hand-authored')).toHaveLength(2);
+    expect(provenances.filter((p) => p.kind === 'hand-authored')).toEqual([]);
   });
 });
 

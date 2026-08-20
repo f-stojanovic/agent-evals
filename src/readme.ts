@@ -121,6 +121,22 @@ export async function figuresFromArtifacts(
 ): Promise<PublishedFigures> {
   const run = (await read(`.artifacts/run.${suiteId}.json`)) as RunArtifact &
     Record<string, unknown>;
+
+  /* A RUN THAT MEASURED NOTHING IS NOT A SOURCE OF PUBLISHED FIGURES.
+     An expired API key errors every case, and the report renders perfectly
+     well with a weighted score of 0.000 — so refreshing from it would publish
+     an infrastructure failure as a quality result, which is the errored/failed
+     confusion this project spends most of its design budget avoiding. This
+     happened: a live run hit "credit balance is too low", every case errored,
+     and the next `readme:refresh` would have written 0.000 into the README. */
+  if (run.run.totals.errored > 0) {
+    throw new Error(
+      `.artifacts/run.${suiteId}.json records ${run.run.totals.errored} errored case(s) ` +
+        `of ${run.run.totals.cases}. A run that could not evaluate its cases is not a ` +
+        `source of published figures — fix the run and repeat it rather than publishing ` +
+        `what it produced.`,
+    );
+  }
   const semantic = (await read('.artifacts/calibrate-semantic.json')) as {
     report: { minCorrect: number; maxIncorrect: number; margin: number; separates: boolean };
   };

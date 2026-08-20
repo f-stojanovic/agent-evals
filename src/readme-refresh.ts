@@ -19,8 +19,17 @@ import {
 import { BLOCK_NAMES } from './readme.js';
 
 export async function refresh(options: { check: boolean }): Promise<number> {
-  const fresh = await figuresFromArtifacts();
   const readme = await readFile(README_PATH, 'utf8');
+
+  let fresh;
+  try {
+    fresh = await figuresFromArtifacts();
+  } catch (error) {
+    /* A missing or unusable artifact is an ordinary condition — no run yet, or
+       a run that errored — and deserves the sentence, not a stack trace. */
+    console.error(`\n${error instanceof Error ? error.message : String(error)}\n`);
+    return 1;
+  }
 
   if (options.check) {
     let committed;

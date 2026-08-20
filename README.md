@@ -94,8 +94,13 @@ Three things worth stating so the result is not read as better than it is:
   delivery mechanism, not because formatting improved. The earlier run is
   preserved in `evals/baseline.freetext.json`.
 - **The recorded numbers move between runs.** Two consecutive runs of the
-  constrained subject scored 0.972 and 0.953. At 0.75 with a systematic wording
-  failure, that variation was invisible underneath the constant error.
+  constrained subject differed in the third decimal. At 0.75 with a systematic
+  wording failure, that variation was invisible underneath the constant error.
+
+Both figures are anchored to committed archives rather than retyped:
+`evals/baseline.freetext.json` holds the before, `evals/baseline.enums.json`
+holds the after, and a test fails if the prose and the archives disagree.
+Neither is a gate — nothing compares against them.
 
 The reasoning is [ADR 016](docs/decisions/016-categorical-fields-are-constrained-by-schema.md),
 including why `semanticSimilarity` on that field would have been the wrong fix.
@@ -520,13 +525,6 @@ format v1, recorded before the scorer set was part of the record and before the
 fourth case existed. `npm run eval` refuses to compare against it and says so.
 Re-record with `npm run eval -- --update-baseline`. The fixture gate is green
 and current.
-
-**Two fixtures are hand-authored.** `billing-question-schema-01` and
-`no-tool-abuse-01` were added without budget for a live run, so their recordings
-were written by hand and their values satisfy the expectations by construction —
-they cannot fail the fixture gate the way a captured one could. Both declare
-`kind: hand-authored`, the report prints `3 recorded, 2 hand-authored`, and both
-should be replaced from `.artifacts/run.json` on the next live run.
 
 **The judge model pin is weak.** `claude-opus-5` is a moving target on the
 provider's side: the same id can be served by a different build than last month,
