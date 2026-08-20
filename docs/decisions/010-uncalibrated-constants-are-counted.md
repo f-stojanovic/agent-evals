@@ -2,14 +2,23 @@
 
 Date: 2026-08-19
 Status: Accepted
-Evidence: Direct, from this repository's own history. The near-miss is real:
-          the semantic scorer shipped with a [0.3, 0.95] rescale stacked under
-          an invented threshold, and formatCompliance shipped with a 0.5 for a
-          markdown fence. Both were defended in comments at the time; both were
-          deleted. The reporting mechanism is covered by
-          src/uncalibrated.test.ts, including the case that motivated dropping
-          the global registry — a count that changed with which modules had
-          been imported.
+Evidence: Direct, from this repository's own history, and now from one
+          constant taken all the way through.
+          The near-miss is real: the semantic scorer shipped with a
+          [0.3, 0.95] rescale stacked under an invented threshold, and
+          formatCompliance shipped with a 0.5 for a markdown fence. Both were
+          defended in comments at the time; both were deleted.
+          The mechanism is covered by src/uncalibrated.test.ts, including the
+          case that motivated dropping the global registry — a count that
+          changed with which modules had been imported.
+          MEASURED, 2026-08-20: `semantic-similarity.threshold` was counted as
+          uncalibrated in every report, then calibrated against 10 hand-labelled
+          pairs (`npm run calibrate:semantic`). The groups do not separate:
+          lowest correct 0.272, highest incorrect 1.000, margin -0.728. No
+          threshold classifies the set, so none was adopted and the constant is
+          still declared as a guess. That is the mechanism working — a counted
+          assumption was examined and survived as an assumption, with a reason
+          on the record rather than a number invented to close the ticket.
 
 ## Context
 

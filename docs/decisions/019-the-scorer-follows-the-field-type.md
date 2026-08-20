@@ -66,23 +66,43 @@ case to exercise them means the encoder is now genuinely part of the suite, and
 worse. Adding scorers changes what the mean is an average of. That is the
 correct behaviour and it is an uncomfortable property: the aggregate is not
 comparable across a change to the scorer set, in the same way it is not
-comparable across a change of model. The baseline records model identity and
-refuses a mismatched comparison; it does **not** record the scorer set, so this
-change surfaced as a spurious regression on the run that introduced it and had
-to be re-recorded by hand. That gap is real and unfixed.
+comparable across a change of model. The baseline records model identity and refuses a mismatched comparison; it did
+**not** record the scorer set, so this change surfaced as a spurious regression
+on the run that introduced it and had to be re-recorded by hand.
+
+That gap is now closed, by reusing the model mechanic one axis over. The
+baseline records the sorted scorer names, a mismatch is its own hard failure
+with its own message — *"the scorer set changed, so these means are not
+comparable — re-record the baseline"* — and when either identity differs the
+per-case deltas are not computed at all, because a fake regression is worse
+than no number: it looks actionable. Both directions are tested, added and
+removed. Recording a new field changed the baseline format, so
+`BASELINE_VERSION` went to 2 and an older file now fails with a sentence naming
+the remedy rather than a schema dump — and `--update-baseline` is exempt from
+that refusal, because it IS the remedy.
 
 **Semantic scores sit in a narrow, low band** — 0.54 to 0.79 for three
 summaries that are all plainly correct. This is the documented behaviour of
 sentence encoders and the reason ADR 010 deleted the rescale that used to hide
-it. The consequence is that the default 0.8 threshold marks all three as below
-threshold, so `below threshold: 2 of 3` in the report is currently a statement
-about an uncalibrated constant rather than about the model.
+it. The default 0.8 threshold marks all three as below threshold, so
+`below threshold` in the report is partly a statement about the constant rather
+than about the model.
 
-**Semantic similarity cannot catch a fluent lie.** A summary that is confidently
-wrong about which order number was involved will still be close to the expected
-paraphrase in embedding space. Exact match on the enum fields is what constrains
-the facts; the semantic score constrains only that the sentence is about the
-right thing.
+Calibrating it was attempted and **failed, informatively**: against 10
+hand-labelled pairs the correct and incorrect groups do not separate at all
+(margin -0.728). No threshold was adopted. See the next point for why.
+
+**Semantic similarity cannot catch a fluent lie, and this is now measured.** A
+summary confidently wrong about a fact sits close to a correct one in embedding
+space because it is about the same thing. In the calibration set, the three
+fluent-but-wrong candidates occupy the TOP of the ranking — above every correct
+paraphrase — and the worst of them, a summary that says the customer wants a
+replacement when the email explicitly declined one, scores **1.000**. The
+highest score in the whole set belongs to the wrong answer.
+
+Exact match on the enum fields is what constrains the facts; the semantic score
+constrains only what the sentence is about. That is the argument for never
+letting a semantic scorer be the only scorer on a field.
 
 ## Alternatives rejected
 

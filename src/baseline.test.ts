@@ -23,6 +23,8 @@ const MODELS: Record<string, LockedModel> = {
   embedding: { modelId: 'enc', revision: 'rev-1', dtype: 'fp32' },
 };
 
+const SCORERS = ['exact-fields'];
+
 function caseResult(overrides: Partial<CaseResult> & { caseId: string }): CaseResult {
   return {
     status: 'scored',
@@ -58,11 +60,16 @@ function suite(results: CaseResult[]): SuiteResult {
   };
 }
 
-function baseline(cases: Baseline['cases'], models = MODELS): Baseline {
+function baseline(
+  cases: Baseline['cases'],
+  models = MODELS,
+  scorers: string[] = SCORERS,
+): Baseline {
   return {
     version: 1,
     recordedAt: '2026-08-01T00:00:00.000Z',
     models,
+    scorers,
     cases,
     totals: { cases: Object.keys(cases).length, weightedScore: 1 },
   };
@@ -85,6 +92,7 @@ describe('the derived tolerance', () => {
       result,
       baseline({ stable: { mean: 0.95, stdDev: 0.01, n: 5, scorers: {} } }),
       MODELS,
+      SCORERS,
     );
 
     expect(comparison.regressions.map((r) => r.caseId)).toEqual(['stable']);
@@ -98,6 +106,7 @@ describe('the derived tolerance', () => {
       result,
       baseline({ noisy: { mean: 0.6, stdDev: 0.35, n: 5, scorers: {} } }),
       MODELS,
+      SCORERS,
     );
 
     expect(comparison.regressions).toEqual([]);
@@ -111,6 +120,7 @@ describe('the derived tolerance', () => {
       result,
       baseline({ once: { mean: 1, n: 1, scorers: {} } }),
       MODELS,
+      SCORERS,
     );
 
     /* se collapses to 0 with no measured variance, so only the floor is left —
@@ -125,8 +135,8 @@ describe('the derived tolerance', () => {
     const result = suite([caseResult({ caseId: 'c', value: 0.8, stdDev: 0.1, samples: 4 })]);
     const recorded = baseline({ c: { mean: 0.95, stdDev: 0.1, n: 4, scorers: {} } });
 
-    expect(compareToBaseline(result, recorded, MODELS, { z: 1 }).regressions).toHaveLength(1);
-    expect(compareToBaseline(result, recorded, MODELS, { z: 4 }).regressions).toHaveLength(0);
+    expect(compareToBaseline(result, recorded, MODELS, SCORERS, { z: 1 }).regressions).toHaveLength(1);
+    expect(compareToBaseline(result, recorded, MODELS, SCORERS, { z: 4 }).regressions).toHaveLength(0);
   });
 
   it('reports an improvement without failing the run', () => {
@@ -136,6 +146,7 @@ describe('the derived tolerance', () => {
       result,
       baseline({ c: { mean: 0.7, stdDev: 0.01, n: 5, scorers: {} } }),
       MODELS,
+      SCORERS,
     );
 
     expect(comparison.comparisons[0]?.status).toBe('improved');
@@ -147,9 +158,12 @@ describe('compareToBaseline', () => {
   it('treats a model change as a hard failure, not a warning', () => {
     const result = suite([caseResult({ caseId: 'c' })]);
 
-    const comparison = compareToBaseline(result, baseline({ c: { mean: 1, n: 1, scorers: {} } }), {
-      embedding: { modelId: 'enc', revision: 'rev-2', dtype: 'fp32' },
-    });
+    const comparison = compareToBaseline(
+      result,
+      baseline({ c: { mean: 1, n: 1, scorers: {} } }),
+      { embedding: { modelId: 'enc', revision: 'rev-2', dtype: 'fp32' } },
+      SCORERS,
+    );
 
     /* Scores are not comparable across revisions, so this is not a weaker
        comparison — it is a meaningless one. */
@@ -160,7 +174,7 @@ describe('compareToBaseline', () => {
   it('reports a new case without calling it a regression', () => {
     const result = suite([caseResult({ caseId: 'fresh', value: 0.4 })]);
 
-    const comparison = compareToBaseline(result, baseline({}), MODELS);
+    const comparison = compareToBaseline(result, baseline({}), MODELS, SCORERS);
 
     expect(comparison.newCases.map((c) => c.caseId)).toEqual(['fresh']);
     expect(comparison.regressions).toEqual([]);
@@ -175,6 +189,7 @@ describe('compareToBaseline', () => {
       result,
       baseline({ kept: { mean: 1, n: 1, scorers: {} }, deleted: { mean: 0.2, n: 1, scorers: {} } }),
       MODELS,
+      SCORERS,
     );
 
     /* Deleting a failing case is the cheapest way to make a gate green. */
@@ -185,15 +200,74 @@ describe('compareToBaseline', () => {
   it('fails on an errored case and never compares it', () => {
     const result = suite([caseResult({ caseId: 'c', status: 'errored', value: 0 })]);
 
-    const comparison = compareToBaseline(result, baseline({ c: { mean: 1, n: 1, scorers: {} } }), MODELS);
+    const comparison = compareToBaseline(
+      result,
+      baseline({ c: { mean: 1, n: 1, scorers: {} } }),
+      MODELS,
+      SCORERS,
+    );
 
     expect(comparison.erroredCases).toEqual(['c']);
     expect(comparison.regressions).toEqual([]);
     expect(comparison.ok).toBe(false);
   });
 
+  it('fails when a scorer was ADDED, and does not call it a regression', () => {
+    /* This is the exact event that produced a 0.953 -> 0.886 "regression" with
+       nothing getting worse: registering semanticSimilarity and
+       formatCompliance changed what each case mean averages. */
+    const result = suite([caseResult({ caseId: 'c', value: 0.85, stdDev: 0.01, samples: 5 })]);
+
+    const comparison = compareToBaseline(
+      result,
+      baseline({ c: { mean: 1, stdDev: 0.01, n: 5, scorers: {} } }),
+      MODELS,
+      ['exact-fields', 'semantic-similarity'],
+    );
+
+    expect(comparison.ok).toBe(false);
+    expect(comparison.scorerSetMismatch[0]).toContain('added semantic-similarity');
+    expect(comparison.scorerSetMismatch[0]).toContain('not comparable');
+    /* The drop is real arithmetic, not a quality regression, and the gate must
+       not report it as one. */
+    expect(comparison.regressions).toEqual([]);
+  });
+
+  it('fails when a scorer was REMOVED', () => {
+    const result = suite([caseResult({ caseId: 'c', value: 1, samples: 5 })]);
+
+    const comparison = compareToBaseline(
+      result,
+      baseline({ c: { mean: 1, n: 5, scorers: {} } }, MODELS, ['exact-fields', 'llm-judge']),
+      MODELS,
+      ['exact-fields'],
+    );
+
+    expect(comparison.ok).toBe(false);
+    expect(comparison.scorerSetMismatch[0]).toContain('removed llm-judge');
+  });
+
+  it('does not care about the order the scorers were registered in', () => {
+    const result = suite([caseResult({ caseId: 'c', value: 1, samples: 5 })]);
+
+    const comparison = compareToBaseline(
+      result,
+      baseline({ c: { mean: 1, n: 5, scorers: {} } }, MODELS, ['a', 'b']),
+      MODELS,
+      ['b', 'a'],
+    );
+
+    expect(comparison.scorerSetMismatch).toEqual([]);
+    expect(comparison.ok).toBe(true);
+  });
+
   it('treats every case as new when there is no baseline yet', () => {
-    const comparison = compareToBaseline(suite([caseResult({ caseId: 'c' })]), undefined, MODELS);
+    const comparison = compareToBaseline(
+      suite([caseResult({ caseId: 'c' })]),
+      undefined,
+      MODELS,
+      SCORERS,
+    );
 
     expect(comparison.newCases).toHaveLength(1);
     expect(comparison.ok).toBe(true);
@@ -214,8 +288,10 @@ describe('baselineFrom', () => {
       }),
     ]);
 
-    const recorded = baselineFrom(result, MODELS);
+    const recorded = baselineFrom(result, MODELS, ['b-scorer', 'a-scorer']);
 
+    /* Sorted, so registration order cannot produce a spurious diff. */
+    expect(recorded.scorers).toEqual(['a-scorer', 'b-scorer']);
     expect(recorded.cases['c']).toEqual({
       mean: 0.75,
       stdDev: 0.1,
@@ -230,14 +306,14 @@ describe('baselineFrom', () => {
   it('refuses to record a baseline when a case errored', () => {
     const result = suite([caseResult({ caseId: 'broken', status: 'errored' })]);
 
-    expect(() => baselineFrom(result, MODELS)).toThrow(/Refusing to record a baseline/);
+    expect(() => baselineFrom(result, MODELS, SCORERS)).toThrow(/Refusing to record a baseline/);
   });
 
   it('round-trips through disk', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'agent-evals-baseline-'));
     created.push(dir);
     const path = join(dir, 'baseline.json');
-    const recorded = baselineFrom(suite([caseResult({ caseId: 'c', value: 0.5 })]), MODELS);
+    const recorded = baselineFrom(suite([caseResult({ caseId: 'c', value: 0.5 })]), MODELS, SCORERS);
 
     await writeBaseline(recorded, path);
 

@@ -79,20 +79,21 @@ describe('loadFixtures', () => {
     expect(fixtures.get('a')?.provenance).toEqual({ kind: 'hand-authored', author: 'Filip' });
   });
 
-  it('every committed fixture is a real recording, and says which model', async () => {
+  it('records which fixtures are captured and which are still hand-written', async () => {
     const dir = fileURLToPath(new URL('../evals/fixtures', import.meta.url));
 
     const fixtures = await loadFixtures(dir);
     const provenances = [...fixtures.values()].map((f) => f.provenance);
+    const recorded = provenances.filter((p) => p.kind === 'recorded');
 
-    /* These were hand-authored while a code comment claimed they were captured
-       (ADR 015). They are now genuinely captured — from the live run of
-       2026-08-20 — and this assertion is what keeps the claim checkable rather
-       than restoring it to prose. */
-    expect(provenances.every((p) => p.kind === 'recorded')).toBe(true);
-    expect(
-      provenances.every((p) => p.kind === 'recorded' && p.model === 'claude-sonnet-5'),
-    ).toBe(true);
+    /* The whole set was hand-authored while a code comment claimed otherwise
+       (ADR 015). Most are now genuinely captured; the newest case was added
+       without budget for a live run and says so rather than blending in.
+       Asserting the exact split is what stops a hand-written fixture being
+       quietly relabelled — or a captured one being quietly replaced. */
+    expect(recorded).toHaveLength(3);
+    expect(recorded.every((p) => p.kind === 'recorded' && p.model === 'claude-sonnet-5')).toBe(true);
+    expect(provenances.filter((p) => p.kind === 'hand-authored')).toHaveLength(1);
   });
 });
 

@@ -74,3 +74,35 @@
           customer_name: "Maja Petrović"
           requested_action: issue_refund
           summary: "Customer Maja Petrović received order #48812 with a shattered ceramic mug due to damaged packaging and is requesting a full refund instead of a replacement."
+
+# HAND-AUTHORED, unlike the three above, and awaiting replacement.
+#
+# Its case was added at the same time as this entry, and re-recording requires
+# a live run that had not been paid for yet. It is marked honestly rather than
+# quietly matching the format of its neighbours.
+#
+# Read its contribution to the fixture gate with that in mind: the values below
+# were written to satisfy the expectations, so this case cannot fail the fixture
+# run the way a captured one could. It exercises the machinery; it does not test
+# the model. Replace it from .artifacts/run.json on the next live run.
+- caseId: billing-question-schema-01
+  provenance:
+    kind: hand-authored
+    author: Filip Stojanović
+    note: >
+      Written by hand because the case was added without budget for a live run.
+      Not captured, and not evidence about the model. Replace on the next
+      `npm run eval`.
+  output:
+    model: claude-sonnet-5
+    inputTokens: 0
+    outputTokens: 0
+    latencyMs: 0
+    toolCalls:
+      - name: record_extraction
+        input:
+          intent: billing_question
+          urgency: low
+          customer_name: "Priya Raman"
+          requested_action: request_more_information
+          summary: "Priya Raman was charged twice for March against invoice LW-2291 and wants someone to check the duplicate charge."

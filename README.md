@@ -243,6 +243,65 @@ about the order number still lands close to the expected paraphrase. The enum
 fields constrain the facts; the semantic score only constrains what the sentence
 is about.
 
+## A semantic scorer cannot catch a fluent lie
+
+This is the most useful thing in this repository if you are building your own,
+and it is measured rather than argued.
+
+`npm run calibrate:semantic` scores 10 hand-labelled summary pairs against the
+local encoder. Five are correct paraphrases. Five are wrong — but three of those
+are wrong the way a model is actually wrong: fluent, on-topic, confident, and
+false about one fact.
+
+```
+  pair                          label      cosine
+  ----------------------------  ---------  ------
+  sem-wrong-fluent-action-01    incorrect  1.000
+  sem-wrong-fluent-severity-01  incorrect  0.708
+  sem-good-cancellation-01      correct    0.700
+  sem-good-billing-01           correct    0.678
+  sem-wrong-fluent-entity-01    incorrect  0.668
+  sem-good-outage-01            correct    0.566
+  sem-good-terse-01             correct    0.408
+  sem-wrong-empty-ish-01        incorrect  0.300
+  sem-good-refund-01            correct    0.272
+  sem-wrong-topic-01            incorrect  0.243
+
+  lowest correct   : 0.272
+  highest incorrect: 1.000
+  margin           : -0.728
+
+  DOES NOT SEPARATE.
+```
+
+**The three fluent lies are at the top of the ranking, above every correct
+paraphrase.** The highest score in the set — a perfect 1.000 — belongs to a
+summary that says the customer wants a replacement, when the email explicitly
+declined one. One word changed, the fact inverted, and the encoder cannot see it,
+because the two sentences are about the same thing.
+
+Meanwhile a correct, terse summary ("Damaged item, refund requested") scores
+0.408, and a correct full paraphrase scores 0.272 — both below the worst
+off-topic negative.
+
+There is no threshold that separates these groups. So none was adopted: the
+calibration reports the failure, and `semantic-similarity.threshold` stays
+declared as an uncalibrated constant in every run. **A failed calibration is a
+result.** Picking a number that splits overlapping data would have produced
+something that looked measured and was not.
+
+What this actually shows is a limit of the tool, not of the labels:
+
+> The enum fields constrain the facts. The semantic score only constrains what
+> the sentence is about.
+
+Which is the reason a semantic scorer must never be the only scorer on a field.
+Pair it with something that can be wrong in a way it can detect — exact match on
+the parts that are categorical, a schema on the shape, a judge with a rubric that
+names the facts that matter. On the example suite, `exact-fields` scoring 1.00 on
+the enums is what makes the 0.54 semantic score on the same case readable as
+"different wording" rather than "possibly fabricated".
+
 ## An eval that measures nothing must not report green
 
 `EvalCase.expect` is an open record: each scorer owns its own keys, so adding a
@@ -417,16 +476,25 @@ is a range, not a number.
 **Neither GitHub workflow has ever executed.** There is no remote. Every run in
 this README was local.
 
-**The semantic threshold is uncalibrated and currently fails everything.**
-Three correct summaries score 0.54–0.79 raw cosine; the default cutoff is 0.8.
-The report declares it as a guess on every run, and calibrating it against
-labelled pairs — the way the judge was calibrated — has not been done.
+**The semantic threshold is uncalibrated, and calibration failed.** Against 10
+hand-labelled pairs the correct and incorrect groups do not separate at all
+(margin −0.728), so no threshold was adopted and the constant is still declared
+as a guess in every report. That is a limit of the scorer rather than of the
+labels — see "A semantic scorer cannot catch a fluent lie" above. The labels are
+one annotator's and are expected to be reviewed.
 
-**The baseline does not record the scorer set.** It records model identity and
-refuses a comparison across a model change. Registering a new scorer changes
-what the case mean averages, which surfaces as a spurious regression on the run
-that introduces it — as it did here, 0.953 → 0.886 with nothing getting worse.
-The fix is the same mechanic already used for models, and it is not built.
+**The live baseline is stale and needs one paid run.** It is still baseline
+format v1, recorded before the scorer set was part of the record and before the
+fourth case existed. `npm run eval` refuses to compare against it and says so.
+Re-record with `npm run eval -- --update-baseline`. The fixture gate is green
+and current.
+
+**One fixture is hand-authored.** `billing-question-schema-01` was added
+without budget for a live run, so its recording was written by hand and its
+values satisfy the expectations by construction — it cannot fail the fixture
+gate the way a captured one could. It declares `kind: hand-authored`, the report
+prints `3 recorded, 1 hand-authored`, and it should be replaced from
+`.artifacts/run.json` on the next live run.
 
 **The judge model pin is weak.** `claude-opus-5` is a moving target on the
 provider's side: the same id can be served by a different build than last month,

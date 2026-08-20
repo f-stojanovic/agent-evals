@@ -67,3 +67,50 @@
       - Northgate Retail's checkout API has been returning 503 for 40 minutes, costing about £4k an hour, and needs engineering escalation before a campaign launch.
       - A production outage on the checkout endpoint is losing the customer revenue and they want it escalated urgently.
     format: tool-call
+
+- id: billing-question-schema-01
+  description: >
+    A straightforward billing question, carried mainly to exercise
+    `matchesSchema` against a real model. Every other scorer ships with a case
+    that runs it; this one shipped registered and idle, which meant a scorer
+    nobody had ever seen produce a number was being counted as working.
+
+    The schema here is deliberately stricter than the enums alone: it also
+    requires `summary` to be a non-empty string and forbids extra keys, which
+    is the property `exactFields` cannot check because it only grades the
+    fields a case happens to name.
+  tags: [extraction, schema]
+  input:
+    from: Priya Raman <p.raman@lumen-works.example>
+    subject: Charged twice for March?
+    body: |
+      Hi,
+
+      I think I've been billed twice for March — there are two charges of
+      £49 on the same day against invoice LW-2291. Could you check and let me
+      know what's happened?
+
+      Nothing urgent, I just don't want it to repeat in April.
+
+      Priya Raman
+  expect:
+    fields:
+      intent: billing_question
+      urgency: low
+      customer_name: Priya Raman
+      requested_action: request_more_information
+    schema:
+      type: object
+      required: [intent, urgency, customer_name, requested_action, summary]
+      additionalProperties: false
+      properties:
+        intent: { enum: [refund_request, technical_issue, cancellation_request, complaint, billing_question] }
+        urgency: { enum: [low, medium, high, critical] }
+        customer_name: { type: string, minLength: 1 }
+        requested_action:
+          enum: [issue_refund, replace_item, escalate_to_engineering, explain_cancellation_terms, request_more_information, apologise]
+        summary: { type: string, minLength: 1 }
+    similar:
+      - Priya Raman was charged twice for March against invoice LW-2291 and wants someone to check the duplicate charge.
+      - A customer is asking about two identical £49 charges on the same invoice and whether it will happen again.
+    format: tool-call

@@ -133,6 +133,17 @@ export function formatReport({ run, comparison, models, provenance }: ReportInpu
     lines.push('## Model mismatch', '', ...comparison.modelMismatches.map((m) => `- ${m}`), '');
   }
 
+  if (comparison.scorerSetMismatch.length > 0) {
+    /* Its own heading, not folded into the regressions list. The whole point
+       of detecting this is that it is NOT a regression. */
+    lines.push(
+      '## Scorer set changed',
+      '',
+      ...comparison.scorerSetMismatch.map((m) => `- ${m}`),
+      '',
+    );
+  }
+
   lines.push(
     '## Totals',
     '',
@@ -192,6 +203,7 @@ function gateVerdict(comparison: BaselineComparison): string {
     reasons.push(`${comparison.missingCases.length} missing from the suite`);
   }
   if (comparison.modelMismatches.length > 0) reasons.push('model mismatch');
+  if (comparison.scorerSetMismatch.length > 0) reasons.push('scorer set changed');
 
   return `**GATE: FAIL** — ${reasons.join(', ')}.`;
 }
@@ -236,6 +248,8 @@ function statusMark(comparison: CaseComparison | undefined): string {
       return '⚠️';
     case 'new':
       return '🆕';
+    case 'incomparable':
+      return '≠ ';
     default:
       return '  ';
   }

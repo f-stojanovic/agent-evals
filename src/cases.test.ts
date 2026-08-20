@@ -231,13 +231,27 @@ describe('loadCases', () => {
 
     const cases = await loadCases(dir);
 
-    expect(cases).toHaveLength(3);
+    expect(cases).toHaveLength(4);
     expect(cases.map((c) => c.id)).toEqual([
+      'billing-question-schema-01',
       'cancellation-or-complaint-01',
       'outage-escalation-01',
       'refund-damaged-item-01',
     ]);
     expect(cases.some((c) => c.tags?.includes('ambiguous'))).toBe(true);
+  });
+
+  it('every shipped scorer has at least one case that exercises it', async () => {
+    const dir = fileURLToPath(new URL('../evals/cases', import.meta.url));
+
+    const cases = await loadCases(dir);
+    const declared = new Set(cases.flatMap((c) => Object.keys(c.expect)));
+
+    /* A scorer registered but never applicable is a scorer nobody has watched
+       produce a number. `schema` was the last one missing. */
+    for (const key of ['fields', 'schema', 'similar', 'format', 'rubric']) {
+      expect(declared.has(key), `no case declares expect.${key}`).toBe(true);
+    }
   });
 
   it('the example suite is wired to scorers that actually measure it', async () => {

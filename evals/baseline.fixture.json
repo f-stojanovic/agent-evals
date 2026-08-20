@@ -1,6 +1,6 @@
 {
-  "version": 1,
-  "recordedAt": "2026-08-20T08:29:11.137Z",
+  "version": 2,
+  "recordedAt": "2026-08-20T11:35:51.859Z",
   "models": {
     "judge": {
       "modelId": "fixture-judge",
@@ -8,7 +8,26 @@
       "dtype": "replay"
     }
   },
+  "scorers": [
+    "calls-tool",
+    "exact-fields",
+    "format-compliance",
+    "llm-judge",
+    "matches-schema",
+    "semantic-similarity"
+  ],
   "cases": {
+    "billing-question-schema-01": {
+      "mean": 1,
+      "stdDev": 0,
+      "n": 5,
+      "scorers": {
+        "exact-fields": 1,
+        "matches-schema": 1,
+        "semantic-similarity": 1,
+        "format-compliance": 1
+      }
+    },
     "cancellation-or-complaint-01": {
       "mean": 0.884829,
       "stdDev": 0,
@@ -42,7 +61,7 @@
     }
   },
   "totals": {
-    "cases": 3,
-    "weightedScore": 0.867791
+    "cases": 4,
+    "weightedScore": 0.894233
   }
 }

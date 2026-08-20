@@ -46,6 +46,7 @@ const clean: BaselineComparison = {
   missingCases: [],
   erroredCases: [],
   modelMismatches: [],
+  scorerSetMismatch: [],
 };
 
 describe('formatReport', () => {

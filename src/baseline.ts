@@ -14,7 +14,15 @@ import type { LockedModel } from './models-lock.js';
 import type { CaseResult, SuiteResult, UncalibratedConstant } from './types.js';
 
 export const BASELINE_PATH = 'evals/baseline.json';
-export const BASELINE_VERSION = 1;
+/**
+ * Bumped when the recorded SHAPE changes, not when the numbers do.
+ *
+ * v2 added the scorer set. A v1 file cannot be compared against a v2 run —
+ * not because the means are wrong, but because the run cannot tell whether
+ * they were produced by the same scorers, which is the whole point of
+ * recording them.
+ */
+export const BASELINE_VERSION = 2;
 
 /**
  * What a baseline records, and nothing else.
@@ -27,6 +35,11 @@ export const BASELINE_VERSION = 1;
  * transcripts across a few hundred cases make the file grow faster than
  * anybody notices it stopped being readable.
  */
+/** An existing baseline predates a change to what a baseline records. */
+export class BaselineVersionError extends Error {
+  override readonly name = 'BaselineVersionError';
+}
+
 export type BaselineCase = {
   mean: number;
   /** Absent when n === 1: spread is not meaningful for a single draw, and 0
@@ -42,6 +55,16 @@ export type Baseline = {
   /** Which models produced these numbers. A mismatch is a hard failure — see
    *  {@link compareToBaseline}. */
   models: Record<string, LockedModel>;
+  /**
+   * The scorer names that produced these means, sorted.
+   *
+   * Recorded for the same reason the models are: a case mean is an average
+   * over the scorers that ran, so adding or removing one changes what the
+   * number is an average OF. Comparing across that change is not a weaker
+   * comparison, it is a meaningless one — and it does not look meaningless,
+   * it looks like a regression. See {@link compareToBaseline}.
+   */
+  scorers: string[];
   cases: Record<string, BaselineCase>;
   totals: { cases: number; weightedScore: number };
 };
@@ -56,6 +79,7 @@ const baselineSchema = z.strictObject({
   version: z.number().int(),
   recordedAt: z.string(),
   models: z.record(z.string(), lockedModelSchema),
+  scorers: z.array(z.string()),
   cases: z.record(
     z.string(),
     z.strictObject({
@@ -79,7 +103,11 @@ const baselineSchema = z.strictObject({
  * evaluate would silently shrink the suite, and the next run would compare
  * against a file that quietly stopped covering them.
  */
-export function baselineFrom(result: SuiteResult, models: Record<string, LockedModel>): Baseline {
+export function baselineFrom(
+  result: SuiteResult,
+  models: Record<string, LockedModel>,
+  scorers: readonly string[],
+): Baseline {
   const errored = result.results.filter((r) => r.status === 'errored');
   if (errored.length > 0) {
     throw new Error(
@@ -106,6 +134,7 @@ export function baselineFrom(result: SuiteResult, models: Record<string, LockedM
     version: BASELINE_VERSION,
     recordedAt: result.startedAt,
     models,
+    scorers: [...scorers].sort(),
     cases,
     totals: { cases: result.results.length, weightedScore: round(result.totals.weightedScore) },
   };
@@ -131,7 +160,22 @@ export async function readBaseline(path = BASELINE_PATH): Promise<Baseline | und
     throw error;
   }
 
-  const parsed = baselineSchema.safeParse(JSON.parse(contents) as unknown);
+  const raw: unknown = JSON.parse(contents);
+
+  /* Version first, so an older file produces a sentence a human can act on
+     rather than a schema dump about a field they have never heard of. */
+  const version = (raw as { version?: unknown }).version;
+  if (typeof version === 'number' && version !== BASELINE_VERSION) {
+    throw new BaselineVersionError(
+      `${path} was recorded in baseline format v${version}; this build writes ` +
+        `v${BASELINE_VERSION}. The formats differ in what identity they record ` +
+        `alongside the means — v2 added the scorer set — so a v${version} file cannot ` +
+        `say whether its numbers came from the same scorers this run used. ` +
+        `Re-record it: npm run eval -- --update-baseline`,
+    );
+  }
+
+  const parsed = baselineSchema.safeParse(raw);
   if (!parsed.success) {
     throw new Error(
       `${path} is not a valid baseline: ${parsed.error.issues
@@ -164,7 +208,7 @@ export async function readBaseline(path = BASELINE_PATH): Promise<Baseline | und
 
 export type CaseComparison = {
   caseId: string;
-  status: 'regressed' | 'improved' | 'unchanged' | 'new' | 'errored';
+  status: 'regressed' | 'improved' | 'unchanged' | 'new' | 'errored' | 'incomparable';
   currentMean: number;
   baselineMean?: number;
   delta?: number;
@@ -183,6 +227,10 @@ export type BaselineComparison = {
   missingCases: string[];
   erroredCases: string[];
   modelMismatches: string[];
+  /** Populated when the registered scorer set differs from the recorded one.
+   *  Kept separate from `modelMismatches` so the report can say which of the
+   *  two incomparabilities occurred. */
+  scorerSetMismatch: string[];
 };
 
 export type CompareOptions = {
@@ -294,6 +342,7 @@ export function compareToBaseline(
   result: SuiteResult,
   baseline: Baseline | undefined,
   models: Record<string, LockedModel>,
+  scorers: readonly string[],
   options: CompareOptions = {},
 ): BaselineComparison {
   const z = options.z ?? DEFAULT_Z;
@@ -312,6 +361,7 @@ export function compareToBaseline(
       missingCases: [],
       erroredCases,
       modelMismatches: [],
+      scorerSetMismatch: [],
     };
   }
 
@@ -320,6 +370,35 @@ export function compareToBaseline(
      comparing across one is not a weaker comparison — it is a meaningless
      one (ADR 009). Hard failure, never a warning. */
   const modelMismatches = compareModels(baseline.models, models);
+
+  /* Exactly the model mechanic, applied one axis over. A case mean averages
+     the scorers that ran; change the set and every mean shifts at once, in the
+     shape of a regression. Registering `semanticSimilarity` and
+     `formatCompliance` once moved this suite 0.953 -> 0.886 with nothing
+     getting worse, and it took a human to notice the drop was arithmetic. */
+  const scorerSetMismatch = compareScorerSets(baseline.scorers, scorers);
+
+  /* If either identity changed, the per-case deltas are arithmetic noise, so
+     none are computed. Reporting "regressed" beside "these numbers are not
+     comparable" would be inviting somebody to read the deltas anyway — and a
+     fake regression is worse than no number, because it looks actionable. */
+  if (modelMismatches.length > 0 || scorerSetMismatch.length > 0) {
+    return {
+      ok: false,
+      uncalibrated: screenConstants(options),
+      comparisons: result.results.map((caseResult) => ({
+        caseId: caseResult.caseId,
+        status: caseResult.status === 'errored' ? ('errored' as const) : ('incomparable' as const),
+        currentMean: caseResult.value,
+      })),
+      regressions: [],
+      newCases: [],
+      missingCases: [],
+      erroredCases,
+      modelMismatches,
+      scorerSetMismatch,
+    };
+  }
 
   const comparisons: CaseComparison[] = [];
   const regressions: CaseComparison[] = [];
@@ -378,14 +457,45 @@ export function compareToBaseline(
       regressions.length === 0 &&
       missingCases.length === 0 &&
       erroredCases.length === 0 &&
-      modelMismatches.length === 0,
+      modelMismatches.length === 0 &&
+      scorerSetMismatch.length === 0,
     comparisons,
     regressions,
     newCases,
     missingCases,
     erroredCases,
     modelMismatches,
+    scorerSetMismatch,
   };
+}
+
+/**
+ * Compares the registered scorer names against the recorded ones.
+ *
+ * A hard failure with its own message, never a regression and never a silent
+ * pass. The wording says what the reader has to do, because the honest
+ * response to "these numbers are not comparable" is to re-record, not to
+ * squint at a delta.
+ */
+function compareScorerSets(recorded: readonly string[], current: readonly string[]): string[] {
+  const before = [...recorded].sort();
+  const after = [...current].sort();
+  if (before.join('\u0000') === after.join('\u0000')) return [];
+
+  const added = after.filter((name) => !before.includes(name));
+  const removed = before.filter((name) => !after.includes(name));
+
+  const changes = [
+    ...(added.length > 0 ? [`added ${added.join(', ')}`] : []),
+    ...(removed.length > 0 ? [`removed ${removed.join(', ')}`] : []),
+  ];
+
+  return [
+    `the scorer set changed (${changes.join('; ')}), so these means are not ` +
+      `comparable — a case mean averages the scorers that ran, and changing the set ` +
+      `moves every case at once without anything getting worse. Re-record the ` +
+      `baseline in the same commit as the scorer change.`,
+  ];
 }
 
 /** Standard error of the difference of two means. */

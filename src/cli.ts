@@ -15,6 +15,7 @@ import { anthropicJudge } from './scorers/judge.js';
 import { SUBJECT_ID, supportExtractionSubject } from './subjects/support-extraction.js';
 import { CACHE_OFF, DEFAULT_CACHE_DIR, runSuite } from './runner.js';
 import {
+  BaselineVersionError,
   baselineFrom,
   compareToBaseline,
   describeBaselineChange,
@@ -129,8 +130,27 @@ export async function main(argv: readonly string[]): Promise<number> {
   /* Asked of the judge rather than scraped from scores: a lock the run
      actually took is the one that belongs in the baseline. */
   const models: Record<string, LockedModel> = { judge: await judge.locked() };
-  const previous = await readBaseline(options.baselinePath);
-  const comparison = compareToBaseline(run, previous, models);
+  let previous;
+  try {
+    previous = await readBaseline(options.baselinePath);
+  } catch (error) {
+    if (error instanceof BaselineVersionError) {
+      /* `--update-baseline` IS the remedy the message recommends, so refusing
+         it here would tell the reader to run a command that then declines. An
+         out-of-date file is not an obstacle to overwriting it — it just means
+         there is nothing to compare against first. */
+      if (!options.updateBaseline) {
+        console.error(`\nBaseline out of date\n\n${error.message}\n`);
+        return 1;
+      }
+      console.error(`\nReplacing an out-of-date baseline: ${error.message}\n`);
+      previous = undefined;
+    } else {
+      throw error;
+    }
+  }
+  const scorerNames = scorers.map((scorer) => scorer.name);
+  const comparison = compareToBaseline(run, previous, models, scorerNames);
 
   const provenance =
     fixtures === undefined
@@ -143,7 +163,7 @@ export async function main(argv: readonly string[]): Promise<number> {
   console.log(`\nArtifact: ${artifact}`);
 
   if (options.updateBaseline) {
-    const next = baselineFrom(run, models);
+    const next = baselineFrom(run, models, scorerNames);
     await writeBaseline(next, options.baselinePath);
     console.log(`\n${describeBaselineChange(previous, next)}`);
     return 0;
