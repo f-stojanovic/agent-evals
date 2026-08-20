@@ -2,18 +2,21 @@
 
 Date: 2026-08-19
 Status: Accepted
-Evidence: None for the split; partial for the fixture run. Neither workflow
-          has ever executed — this repository has no git remote, so nothing has
-          run on GitHub Actions. The fixture eval has only been run locally.
-          The fixtures are now RECORDED — captured verbatim from a live
-          `claude-sonnet-5` run on 2026-08-20 and declaring it in a typed
-          provenance field (ADR 015). They were hand-authored until then, and
-          the live run of 2026-08-19 showed what that cost: the real subject
-          fenced 10 of 15 samples while every committed fixture was bare JSON,
-          so the per-push gate replayed a format distribution the subject did
-          not have.
-          What would still count: one push that actually runs ci.yml, and one
-          nightly eval-live run.
+Evidence: BOTH WORKFLOWS HAVE RUN, 2026-08-20, on
+          github.com/f-stojanovic/agent-evals.
+          `ci.yml` passed on push: typecheck, unit tests, and a full fixture
+          eval, in 40 seconds, with no secret.
+          `eval-live` was dispatched and FAILED — correctly, and usefully. It
+          refused the committed baseline with "recorded in baseline format v1;
+          this build writes v2 … re-record it" and exited 1. The guard from
+          ADR 009/019 fired on real infrastructure rather than on a laptop,
+          against a genuinely stale committed file, which is the first evidence
+          that the gate works off this machine.
+          The fixtures are RECORDED for three of five cases and hand-authored
+          for two added without budget for a live run; each declares which, and
+          the report prints the tally.
+          What would still count: a nightly `eval-live` that passes, which has
+          not yet happened.
 
 ## Context
 

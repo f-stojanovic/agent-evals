@@ -1,6 +1,6 @@
 {
-  "version": 1,
-  "recordedAt": "2026-08-20T08:22:20.217Z",
+  "version": 2,
+  "recordedAt": "2026-08-20T16:55:40.004Z",
   "models": {
     "judge": {
       "modelId": "claude-opus-5",
@@ -8,41 +8,71 @@
       "dtype": "hosted"
     }
   },
+  "scorers": [
+    "calls-tool",
+    "exact-fields",
+    "format-compliance",
+    "llm-judge",
+    "matches-schema",
+    "semantic-similarity"
+  ],
   "cases": {
-    "cancellation-or-complaint-01": {
-      "mean": 0.901786,
-      "stdDev": 0.013865,
+    "billing-question-schema-01": {
+      "mean": 0.952469,
+      "stdDev": 0.005831,
       "n": 5,
       "scorers": {
         "exact-fields": 1,
-        "semantic-similarity": 0.757145,
+        "matches-schema": 1,
+        "semantic-similarity": 0.809877,
+        "format-compliance": 1
+      }
+    },
+    "cancellation-or-complaint-01": {
+      "mean": 0.874849,
+      "stdDev": 0.046382,
+      "n": 5,
+      "scorers": {
+        "exact-fields": 0.9,
+        "semantic-similarity": 0.739394,
         "format-compliance": 1,
-        "llm-judge": 0.85
+        "llm-judge": 0.86
+      }
+    },
+    "no-tool-abuse-01": {
+      "mean": 0.979293,
+      "stdDev": 0.001203,
+      "n": 5,
+      "scorers": {
+        "exact-fields": 1,
+        "calls-tool": 1,
+        "semantic-similarity": 0.917174,
+        "format-compliance": 1
       }
     },
     "outage-escalation-01": {
-      "mean": 0.862016,
-      "stdDev": 0.021374,
+      "mean": 0.922653,
+      "stdDev": 0.005153,
       "n": 5,
       "scorers": {
         "exact-fields": 1,
-        "semantic-similarity": 0.586047,
+        "semantic-similarity": 0.767959,
         "format-compliance": 1
       }
     },
     "refund-damaged-item-01": {
-      "mean": 0.919274,
-      "stdDev": 0.005956,
+      "mean": 0.939485,
+      "stdDev": 0.005293,
       "n": 5,
       "scorers": {
         "exact-fields": 1,
-        "semantic-similarity": 0.757823,
+        "semantic-similarity": 0.818456,
         "format-compliance": 1
       }
     }
   },
   "totals": {
-    "cases": 3,
-    "weightedScore": 0.886273
+    "cases": 5,
+    "weightedScore": 0.931901
   }
 }

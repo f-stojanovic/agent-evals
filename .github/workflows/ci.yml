@@ -37,6 +37,12 @@ jobs:
       - name: Eval (fixture subject)
         run: npm run eval:fixture
 
+      # No `readme:refresh --check` here on purpose. The published figures come
+      # from a LIVE run and this job only has fixture artifacts, so comparing
+      # them would fail on a difference that is correct. The README-matches-
+      # figures half is checked by src/readme.test.ts, which needs no artifacts
+      # and therefore runs on every push.
+
       - name: Upload run artifact
         if: always()
         uses: actions/upload-artifact@v4

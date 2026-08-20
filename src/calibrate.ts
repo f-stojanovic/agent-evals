@@ -317,6 +317,14 @@ if (process.argv[1] !== undefined && process.argv[1].endsWith('calibrate.ts')) {
   const cases = await loadCalibrationCases('evals/calibration');
   const scorer = llmJudge();
   const report = await calibrate({ cases, scorer });
+  /* Persisted so `npm run readme:refresh` can regenerate the published figures
+     from a run rather than from somebody retyping them. */
+  const { mkdir, writeFile } = await import('node:fs/promises');
+  await mkdir('.artifacts', { recursive: true });
+  await writeFile(
+    '.artifacts/calibrate-judge.json',
+    `${JSON.stringify({ report, model: scorer.name, cases: cases.length }, null, 2)}\n`,
+  );
   console.log(formatCalibrationReport(report, summariseProvenance('calibration set', cases)));
   const { collectUncalibrated, formatUncalibratedReport } = await import('./uncalibrated.js');
   console.log(`\n${formatUncalibratedReport(collectUncalibrated([scorer]))}`);

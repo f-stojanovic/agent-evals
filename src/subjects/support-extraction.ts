@@ -19,7 +19,7 @@ export const SUBJECT_MODEL = 'claude-sonnet-5';
 
 /** Bumped whenever the prompt or schema changes, because the cache keys on it
  *  and reusing cached responses would record the old subject's scores. */
-export const SUBJECT_ID = 'support-extraction@3';
+export const SUBJECT_ID = 'support-extraction@4';
 
 /**
  * THE CATEGORICAL FIELDS ARE ENUMS IN A SCHEMA, NOT REQUESTS IN PROSE.
@@ -111,7 +111,10 @@ export type SupportExtractionOptions = {
 
 export function supportExtractionSubject(options: SupportExtractionOptions = {}): Subject {
   const model = options.model ?? SUBJECT_MODEL;
-  const maxTokens = options.maxTokens ?? 1024;
+  /* 4096, not 1024. Adding `summary` pushed the longest case over the old cap:
+     the response stopped mid tool-call and the API delivered
+     `input: {}` — a structurally valid tool call with nothing in it. */
+  const maxTokens = options.maxTokens ?? 4096;
 
   let client = options.client;
   const getClient = (): Anthropic => {
@@ -140,6 +143,23 @@ export function supportExtractionSubject(options: SupportExtractionOptions = {})
       },
       { signal: ctx.signal },
     );
+
+    /* A TRUNCATED RESPONSE IS NOT A MEASUREMENT.
+       Hitting the token cap mid tool-call yields `input: {}` — well-formed,
+       empty, and indistinguishable downstream from a model that chose to
+       return nothing. Scoring that would record a failure the model did not
+       commit; the honest classification is that we could not observe an
+       answer, so the case errors. This surfaced as an obscure
+       "compare resolved to nothing" from the semantic scorer on 1 sample in 5,
+       which is exactly the kind of misattribution the errored/failed split
+       exists to prevent. */
+    if (response.stop_reason === 'max_tokens') {
+      throw new Error(
+        `subject hit max_tokens (${maxTokens}) on case "${ctx.caseId}" and the response ` +
+          `was cut off mid-answer — any tool call it produced is truncated. Raise ` +
+          `maxTokens rather than recording this as a model failure.`,
+      );
+    }
 
     const text = response.content
       .filter((block): block is Anthropic.TextBlock => block.type === 'text')

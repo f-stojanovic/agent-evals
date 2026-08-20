@@ -21,6 +21,7 @@
 | [017](017-checkable-documentation-claims-are-checked.md) | Documentation claims that can be checked mechanically are checked mechanically | Accepted |
 | [018](018-a-check-must-prove-it-inspected-something.md) | A check must prove it inspected something | Accepted |
 | [019](019-the-scorer-follows-the-field-type.md) | The scorer follows the field type | Accepted |
+| [020](020-readme-figures-are-generated.md) | README figures are generated, not transcribed | Accepted |
 
 ## Two axes: Status and Evidence
 

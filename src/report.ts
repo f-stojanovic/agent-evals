@@ -290,7 +290,11 @@ function markdownTable(header: readonly string[], rows: readonly (readonly strin
  */
 export async function writeArtifact(
   input: ReportInput,
-  path = join(ARTIFACT_DIR, 'run.json'),
+  /* Named per suite so a fixture run never clobbers a live one. They are
+     different measurements, and the published figures are generated from the
+     live artifact — overwriting it with a fixture run silently destroys the
+     source of every number in the README. */
+  path = join(ARTIFACT_DIR, `run.${input.run.suiteId}.json`),
 ): Promise<string> {
   await mkdir(dirname(path), { recursive: true });
   await writeFile(

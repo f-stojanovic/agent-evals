@@ -28,7 +28,8 @@
     "eval": "tsx src/cli.ts",
     "eval:fixture": "tsx src/cli.ts --fixture",
     "judge:variance": "tsx src/judge-variance.ts",
-    "calibrate:semantic": "tsx src/calibrate-semantic.ts"
+    "calibrate:semantic": "tsx src/calibrate-semantic.ts",
+    "readme:refresh": "tsx src/readme-refresh.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.117.1",

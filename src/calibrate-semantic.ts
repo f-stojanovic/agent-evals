@@ -200,7 +200,14 @@ export function formatSemanticCalibration(
 /* `npm run calibrate:semantic`. Local encoder only — no API key, no cost. */
 if (process.argv[1] !== undefined && process.argv[1].endsWith('calibrate-semantic.ts')) {
   const pairs = await loadSemanticPairs('evals/calibration-semantic');
-  const report = await calibrateSemantic({ pairs, embedder: localEmbedder() });
+  const embedder = localEmbedder();
+  const report = await calibrateSemantic({ pairs, embedder });
+  const { mkdir, writeFile } = await import('node:fs/promises');
+  await mkdir('.artifacts', { recursive: true });
+  await writeFile(
+    '.artifacts/calibrate-semantic.json',
+    `${JSON.stringify({ report, model: await embedder.locked() }, null, 2)}\n`,
+  );
   console.log(
     formatSemanticCalibration(report, formatProvenance(summariseProvenance('pairs', pairs))),
   );

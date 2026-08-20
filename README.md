@@ -146,30 +146,34 @@ A case is YAML:
 
 Verbatim, current subject, comparing against its own recorded baseline:
 
+<!-- generated:run-block -->
+
 ```
 # Eval run — live
 
-2026-08-20T08:23:15.059Z · 3 cases · 57.8s
+2026-08-20T16:55:40.004Z · 5 cases · 46.0s
 
 **GATE: PASS** — no regression against the baseline.
 
-| case                            | exact-fields | format-compliance | llm-judge | semantic-similarity | mean  | sd    | Δ vs baseline   | via       | cost    | ms    |
-| ------------------------------- | ------------ | ----------------- | --------- | ------------------- | ----- | ----- | --------------- | --------- | ------- | ----- |
-|    cancellation-or-complaint-01 | 1.00         | 1.00              | 0.86      | 0.79                | 0.911 | 0.014 | +0.010 (±0.068) | tool-call | $0.0926 | 57753 |
-|    outage-escalation-01         | 1.00         | 1.00              | —         | 0.54                | 0.846 | 0.008 | -0.016 (±0.071) | tool-call | $0.0326 | 19196 |
-|    refund-damaged-item-01       | 1.00         | 1.00              | —         | 0.76                | 0.921 | 0.005 | +0.002 (±0.057) | tool-call | $0.0303 | 19218 |
+| case                            | calls-tool | exact-fields | format-compliance | llm-judge | matches-schema | semantic-similarity | mean  | sd    | Δ vs baseline   | via       | cost    | ms    |
+| ------------------------------- | ---------- | ------------ | ----------------- | --------- | -------------- | ------------------- | ----- | ----- | --------------- | --------- | ------- | ----- |
+|    billing-question-schema-01   | —          | 1.00         | 1.00              | —         | 1.00           | 0.81                | 0.952 | 0.006 | -0.002 (±0.060) | tool-call | $0.0332 | 34469 |
+|    cancellation-or-complaint-01 | —          | 0.90         | 1.00              | 0.86      | —              | 0.74                | 0.875 | 0.046 | +0.005 (±0.121) | tool-call | $0.0872 | 45977 |
+|    no-tool-abuse-01             | 1.00       | 1.00         | 1.00              | —         | —              | 0.92                | 0.979 | 0.001 | +0.001 (±0.052) | tool-call | $0.0289 | 18586 |
+|    outage-escalation-01         | —          | 1.00         | 1.00              | —         | —              | 0.77                | 0.923 | 0.005 | +0.032 (±0.077) | tool-call | $0.0358 | 41901 |
+|    refund-damaged-item-01       | —          | 1.00         | 1.00              | —         | —              | 0.82                | 0.939 | 0.005 | +0.010 (±0.078) | tool-call | $0.0322 | 19526 |
 
 ## Totals
 
-- cases: 3 · below threshold: 2 of 3 · errored 0
-- weighted score: **0.881**
-- latency: p50 19218ms · p95 57753ms · max 57753ms
-- cost: **$0.1555** — subject $0.0936, judge $0.0620
-- tokens: 16095 in / 3018 out
+- cases: 5 · below threshold: 2 of 5 · errored 0
+- weighted score: **0.932**
+- latency: p50 34469ms · p95 45977ms · max 45977ms
+- cost: **$0.2173** — subject $0.1630, judge $0.0543
+- tokens: 26575 in / 5549 out
 
 ### Output format distribution
 
-- tool-call: 15 (100%)
+- tool-call: 25 (100%)
 
 ### Models
 
@@ -182,11 +186,13 @@ Verbatim, current subject, comparing against its own recorded baseline:
 ### Assumptions
 
 This run used 4 uncalibrated constants:
-  llm-judge.threshold = 0.7 — median judge score at or above which a case passes. …
-  semantic-similarity.threshold = 0.8 — raw cosine above which a response counts as matching. …
-  baseline.floor = 0.05 — absolute score drop tolerated before a case is flagged. …
-  baseline.z = 2 — standard errors of extra allowance granted to a noisy case. …
+  llm-judge.threshold = 0.7 — median judge score at or above which a case passes. A guess; the continuous value is recorded so it can be revisited against history.
+  semantic-similarity.threshold = 0.8 — raw cosine above which a response counts as matching. A guess: the right cutoff depends on the encoder and the domain. Calibrate it against labelled pairs the way src/calibrate.ts calibrates the judge.
+  baseline.floor = 0.05 — absolute score drop tolerated before a case is flagged. The primary allowance in the screen, and a convention — nothing measured says a 0.05 drop is acceptable and 0.06 is not.
+  baseline.z = 2 — standard errors of extra allowance granted to a noisy case. Borrowed from a normal approximation that the underlying data does not satisfy at n=5; treat it as a widening factor, not a confidence level.
 ```
+
+<!-- /generated:run-block -->
 
 **`below threshold: 2 of 3` and the gate still passes.** Two different
 questions, printed as two lines. The tally counts cases under each scorer's own
@@ -253,7 +259,11 @@ local encoder. Five are correct paraphrases. Five are wrong — but three of tho
 are wrong the way a model is actually wrong: fluent, on-topic, confident, and
 false about one fact.
 
+<!-- generated:semantic-calibration -->
+
 ```
+Semantic threshold calibration
+
   pair                          label      cosine
   ----------------------------  ---------  ------
   sem-wrong-fluent-action-01    incorrect  0.898
@@ -271,8 +281,28 @@ false about one fact.
   highest incorrect: 0.898
   margin           : -0.392
 
-  DOES NOT SEPARATE.
+  DOES NOT SEPARATE. 8 pair(s) sit in the overlap:
+    sem-good-billing-01 (correct) at 0.678
+    sem-good-cancellation-01 (correct) at 0.700
+    sem-good-outage-01 (correct) at 0.566
+    sem-good-refund-01 (correct) at 0.808
+    sem-good-terse-01 (correct) at 0.506
+    sem-wrong-fluent-action-01 (incorrect) at 0.898
+    sem-wrong-fluent-entity-01 (incorrect) at 0.668
+    sem-wrong-fluent-severity-01 (incorrect) at 0.708
+
+  There is no threshold that classifies this set correctly, so none is
+  recommended. Leaving the default declared as an uncalibrated constant is
+  the honest outcome: a number chosen to split overlapping data would look
+  measured and would not be.
+
+  What this actually shows is a limit of the scorer, not of the set. A
+  fluent summary that is confidently wrong about a fact sits close to a
+  correct one in embedding space, because it is about the same thing. The
+  fix is not a better threshold; it is not relying on this scorer alone.
 ```
+
+<!-- /generated:semantic-calibration -->
 
 **The worst lie outranks every correct paraphrase.** The top score in the set —
 0.898 — belongs to a summary saying the customer wants a replacement, when the
@@ -368,11 +398,11 @@ So `evals/calibration/` holds cases with human-assigned scores spanning the
 range, each paired with a frozen output. `npm run calibrate` reports mean
 absolute and mean signed error against those labels.
 
-**Measured, 2026-08-19: MAE 0.031 over n=8, against `claude-opus-5`.** A second
-run of the identical set gave 0.019, and the sign of the bias flipped between
-them — so read the figure as 0.02–0.03 and treat its direction as unsupported.
-The labels are one pass by one annotator; an MAE against unreviewed labels
-measures agreement with one person.
+<!-- generated:judge-calibration -->
+
+**Measured: MAE 0.031 over n=8**, mean signed error +0.006. The labels are one pass by one annotator, so this measures agreement with one person.
+
+<!-- /generated:judge-calibration -->
 
 Three details that matter:
 
@@ -388,7 +418,7 @@ Three details that matter:
   variance production has, and the gate derives its allowance from exactly that
   number. Judge variance gets its own command,
   `npm run judge:variance`, which holds the output fixed and asks k=5 times.
-  Measured: mean spread 0.031, max 0.10
+  The measured spread is small — run the command to see the current figure
   ([ADR 014](docs/decisions/014-judge-and-subject-sampling-are-not-multiplied.md)).
 
 ## Counting the assumptions
@@ -448,8 +478,10 @@ overstatement this project exists to prevent.
 - [x] Baseline file and the CI gate, with a tolerance derived from variance
 - [x] Report — markdown and a JSON artifact
 - [x] CI: fixture gate on every push, live run nightly
-- [x] Live calibration figure — MAE 0.031 over 8 labels
-- [x] First live run against a real subject, baseline recorded from it
+- [x] Live judge calibration — the measured figure is in the generated block
+      under "Judging the judge"
+- [x] Live runs against a real subject, with the baseline recorded from one —
+      see the generated run block for what the current baseline covers
 - [ ] Reporters beyond markdown/JSON (GitHub annotations)
 
 Decisions and their reasoning — including one that was wrong and was reversed —
@@ -459,32 +491,27 @@ are in [`docs/decisions/`](docs/decisions/).
 
 Everything here is true as of the last live run. None of it is hypothetical.
 
-**The example suite is three cases, and its `requested_action` expectations are
-too strict.** All three live cases lose exactly one field, and it is the same
-field every time: the model answers `refund_full_amount` where the case expects
-`issue_refund`, `fix_checkout_api_503_errors` where it expects
-`escalate_to_engineering`. Those are reasonable answers to a free-text field
-being graded by exact string match. The right fix is `semanticSimilarity` on
-that field, and it has not been done — so the recorded baseline of 0.751 is
-partly a measurement of the eval's own case design. It was recorded as observed
-rather than adjusted to flatter the model, which is the point of a baseline,
-but do not read 0.75 as "the model gets a quarter of this wrong".
-
-**The calibration labels are one annotator over eight cases.** The MAE of 0.031
-measures agreement with one person's unreviewed judgement. Two of the eight
-labels are contested judgement calls the author flagged at the time.
+**The calibration labels are one annotator over eight cases.** The measured MAE
+is agreement with one person's unreviewed judgement, not with a ground truth.
+Two of the eight labels are contested judgement calls the author flagged at the
+time.
 
 **The MAE is itself noisy.** Two runs of the identical calibration set an hour
-apart gave 0.031 and 0.019, and the sign of the bias flipped. At n=8 the figure
-is a range, not a number.
+apart differed by about a third of its value, and the sign of the bias flipped
+between them. At n=8 the figure is a range, not a number — read the generated
+block as one draw.
 
-**Neither GitHub workflow has ever executed.** There is no remote. Every run in
-this README was local.
+**The live gate has run on GitHub Actions, and it failed — correctly.** A
+`workflow_dispatch` of `eval-live` refused the committed baseline with
+*"recorded in baseline format v1; this build writes v2 … re-record it"* and
+exited 1. That is the guard from ADR 009/019 firing on real infrastructure
+rather than on a laptop, and it is the first evidence that the gate does its job
+outside this machine. `ci.yml` passes on push.
 
 **The semantic threshold is uncalibrated, and calibration failed.** Against 10
 hand-labelled pairs the correct and incorrect groups do not separate at all
-(margin −0.728), so no threshold was adopted and the constant is still declared
-as a guess in every report. That is a limit of the scorer rather than of the
+(the margin is reported in the table above), so no threshold was adopted and the
+constant is still declared as a guess in every report. That is a limit of the scorer rather than of the
 labels — see "A semantic scorer cannot catch a fluent lie" above. The labels are
 one annotator's and are expected to be reviewed.
 
