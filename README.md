@@ -256,33 +256,38 @@ false about one fact.
 ```
   pair                          label      cosine
   ----------------------------  ---------  ------
-  sem-wrong-fluent-action-01    incorrect  1.000
+  sem-wrong-fluent-action-01    incorrect  0.898
+  sem-good-refund-01            correct    0.808
   sem-wrong-fluent-severity-01  incorrect  0.708
   sem-good-cancellation-01      correct    0.700
   sem-good-billing-01           correct    0.678
   sem-wrong-fluent-entity-01    incorrect  0.668
   sem-good-outage-01            correct    0.566
-  sem-good-terse-01             correct    0.408
+  sem-good-terse-01             correct    0.506
   sem-wrong-empty-ish-01        incorrect  0.300
-  sem-good-refund-01            correct    0.272
-  sem-wrong-topic-01            incorrect  0.243
+  sem-wrong-topic-01            incorrect  0.292
 
-  lowest correct   : 0.272
-  highest incorrect: 1.000
-  margin           : -0.728
+  lowest correct   : 0.506
+  highest incorrect: 0.898
+  margin           : -0.392
 
   DOES NOT SEPARATE.
 ```
 
-**The three fluent lies are at the top of the ranking, above every correct
-paraphrase.** The highest score in the set — a perfect 1.000 — belongs to a
-summary that says the customer wants a replacement, when the email explicitly
-declined one. One word changed, the fact inverted, and the encoder cannot see it,
-because the two sentences are about the same thing.
+**The worst lie outranks every correct paraphrase.** The top score in the set —
+0.898 — belongs to a summary saying the customer wants a replacement, when the
+email explicitly declined one. One word changed, the fact inverted, and the
+encoder barely registers it, because the two sentences are about the same thing.
+The best genuinely-correct paraphrase scores 0.808 beneath it.
 
-Meanwhile a correct, terse summary ("Damaged item, refund requested") scores
-0.408, and a correct full paraphrase scores 0.272 — both below the worst
-off-topic negative.
+An earlier version of this table showed that pair at exactly 1.000, which was a
+defect and not a finding. Two different sentences do not produce an identical
+embedding. They had both been truncated by YAML — an unquoted `#48812` starts a
+comment in a plain scalar — so both sides became the same 49-character prefix
+and scored a perfect match. Quoting the strings gives 0.898. The conclusion
+survives; the number that would not have survived scrutiny is gone, and
+`src/eval-data.test.ts` now fails the build on an unquoted ` #` anywhere under
+`evals/`.
 
 There is no threshold that separates these groups. So none was adopted: the
 calibration reports the failure, and `semantic-similarity.threshold` stays
@@ -430,10 +435,10 @@ overstatement this project exists to prevent.
 - [x] Both wiring guards: unclaimed keys, and cases nothing measures
 - [x] Score contract enforcement — finite, 0..1, correctly attributed
 - [x] Extraction with the route recorded; ambiguity refused rather than guessed
-- [x] Scorers registered by the example suite: `exactFields`, `callsTool`,
-      `formatCompliance`, `semanticSimilarity`, `llmJudge`
-- [x] `matchesSchema` ships and is tested; it is registered but skipped, because
-      no example case declares `expect.schema`
+- [x] Every shipped scorer is registered and has produced a number:
+      `exactFields`, `matchesSchema`, `callsTool`, `formatCompliance`,
+      `semanticSimilarity`, `llmJudge`. A test asserts each has a case that
+      exercises it, so none can go idle again unnoticed.
 - [x] Judge calibration against human labels (`npm run calibrate`)
 - [x] Documentation checks as tests (`src/docs.test.ts`), including a check that
       each check inspected a non-empty corpus
@@ -489,12 +494,12 @@ fourth case existed. `npm run eval` refuses to compare against it and says so.
 Re-record with `npm run eval -- --update-baseline`. The fixture gate is green
 and current.
 
-**One fixture is hand-authored.** `billing-question-schema-01` was added
-without budget for a live run, so its recording was written by hand and its
-values satisfy the expectations by construction — it cannot fail the fixture
-gate the way a captured one could. It declares `kind: hand-authored`, the report
-prints `3 recorded, 1 hand-authored`, and it should be replaced from
-`.artifacts/run.json` on the next live run.
+**Two fixtures are hand-authored.** `billing-question-schema-01` and
+`no-tool-abuse-01` were added without budget for a live run, so their recordings
+were written by hand and their values satisfy the expectations by construction —
+they cannot fail the fixture gate the way a captured one could. Both declare
+`kind: hand-authored`, the report prints `3 recorded, 2 hand-authored`, and both
+should be replaced from `.artifacts/run.json` on the next live run.
 
 **The judge model pin is weak.** `claude-opus-5` is a moving target on the
 provider's side: the same id can be served by a different build than last month,

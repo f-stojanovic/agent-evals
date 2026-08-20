@@ -90,15 +90,20 @@ than about the model.
 
 Calibrating it was attempted and **failed, informatively**: against 10
 hand-labelled pairs the correct and incorrect groups do not separate at all
-(margin -0.728). No threshold was adopted. See the next point for why.
+(margin -0.392). No threshold was adopted. See the next point for why.
 
 **Semantic similarity cannot catch a fluent lie, and this is now measured.** A
 summary confidently wrong about a fact sits close to a correct one in embedding
-space because it is about the same thing. In the calibration set, the three
-fluent-but-wrong candidates occupy the TOP of the ranking — above every correct
-paraphrase — and the worst of them, a summary that says the customer wants a
-replacement when the email explicitly declined one, scores **1.000**. The
-highest score in the whole set belongs to the wrong answer.
+space because it is about the same thing. In the calibration set the worst of
+them — a summary saying the customer wants a replacement when the email
+explicitly declined one — scores **0.898**, the top score in the whole set,
+above the best genuinely-correct paraphrase at 0.808.
+
+That figure first read 1.000, which was a YAML defect rather than a finding:
+an unquoted `#48812` starts a comment, both sides of the pair truncated to the
+same prefix, and identical strings scored a perfect match. The conclusion held
+at the real number, and `src/eval-data.test.ts` now fails the build on the
+pattern that caused it.
 
 Exact match on the enum fields is what constrains the facts; the semantic score
 constrains only what the sentence is about. That is the argument for never

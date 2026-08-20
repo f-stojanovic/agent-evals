@@ -25,8 +25,8 @@
   label: correct
   note: Close paraphrase, different wording throughout.
   reference:
-    - A customer received a broken ceramic mug in order #48812 and wants a refund rather than a replacement.
-  candidate: Order #48812 arrived with a shattered mug; the customer is asking for their money back instead of a replacement.
+    - "A customer received a broken ceramic mug in order #48812 and wants a refund rather than a replacement."
+  candidate: "Order #48812 arrived with a shattered mug; the customer is asking for their money back instead of a replacement."
 
 - id: sem-good-outage-01
   provenance: { kind: hand-authored, author: Filip Stojanović }
@@ -59,7 +59,7 @@
     Aggressively short but not wrong. Included because a threshold tuned only on
     verbose paraphrases will reject terse-but-correct output.
   reference:
-    - A customer received a broken ceramic mug in order #48812 and wants a refund rather than a replacement.
+    - "A customer received a broken ceramic mug in order #48812 and wants a refund rather than a replacement."
   candidate: Damaged item, refund requested.
 
 - id: sem-wrong-fluent-action-01
@@ -69,8 +69,8 @@
     THE FLUENT LIE. Same topic, same register, opposite fact — the customer
     explicitly declined a replacement. A semantic scorer is close to blind here.
   reference:
-    - A customer received a broken ceramic mug in order #48812 and wants a refund rather than a replacement.
-  candidate: A customer received a broken ceramic mug in order #48812 and would like a replacement sent out.
+    - "A customer received a broken ceramic mug in order #48812 and wants a refund rather than a replacement."
+  candidate: "A customer received a broken ceramic mug in order #48812 and would like a replacement sent out."
 
 - id: sem-wrong-fluent-severity-01
   provenance: { kind: hand-authored, author: Filip Stojanović }
@@ -95,7 +95,7 @@
   label: incorrect
   note: Different support topic entirely. The easy negative; included as an anchor.
   reference:
-    - A customer received a broken ceramic mug in order #48812 and wants a refund rather than a replacement.
+    - "A customer received a broken ceramic mug in order #48812 and wants a refund rather than a replacement."
   candidate: The customer cannot log in and is asking for a password reset link.
 
 - id: sem-wrong-empty-ish-01

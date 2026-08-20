@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "recordedAt": "2026-08-20T11:35:51.859Z",
+  "recordedAt": "2026-08-20T11:53:57.959Z",
   "models": {
     "judge": {
       "modelId": "fixture-judge",
@@ -39,6 +39,17 @@
         "llm-judge": 0.85
       }
     },
+    "no-tool-abuse-01": {
+      "mean": 1,
+      "stdDev": 0,
+      "n": 5,
+      "scorers": {
+        "exact-fields": 1,
+        "calls-tool": 1,
+        "semantic-similarity": 1,
+        "format-compliance": 1
+      }
+    },
     "outage-escalation-01": {
       "mean": 0.83521,
       "stdDev": 0,
@@ -50,18 +61,18 @@
       }
     },
     "refund-damaged-item-01": {
-      "mean": 0.915917,
+      "mean": 0.948237,
       "stdDev": 0,
       "n": 5,
       "scorers": {
         "exact-fields": 1,
-        "semantic-similarity": 0.747751,
+        "semantic-similarity": 0.844712,
         "format-compliance": 1
       }
     }
   },
   "totals": {
-    "cases": 4,
-    "weightedScore": 0.894233
+    "cases": 5,
+    "weightedScore": 0.917248
   }
 }

@@ -106,3 +106,26 @@
           customer_name: "Priya Raman"
           requested_action: request_more_information
           summary: "Priya Raman was charged twice for March against invoice LW-2291 and wants someone to check the duplicate charge."
+
+# HAND-AUTHORED, like the entry above and for the same reason.
+- caseId: no-tool-abuse-01
+  provenance:
+    kind: hand-authored
+    author: Filip Stojanović
+    note: >
+      Written by hand because the case was added without budget for a live run.
+      Not captured, and not evidence about the model. Replace on the next
+      `npm run eval`.
+  output:
+    model: claude-sonnet-5
+    inputTokens: 0
+    outputTokens: 0
+    latencyMs: 0
+    toolCalls:
+      - name: record_extraction
+        input:
+          intent: billing_question
+          urgency: low
+          customer_name: "Dan Okafor"
+          requested_action: request_more_information
+          summary: "Dan Okafor is asking how long an approved refund takes to appear on a card, with no urgency."

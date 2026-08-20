@@ -52,6 +52,25 @@ describe('cosineSimilarity', () => {
     expect(cosineSimilarity([0, 0], [0, 0])).toBe(0);
   });
 
+  it('never exceeds 1, even when floating point says otherwise', () => {
+    /* A real 384-dimension normalised vector dotted with itself came back as
+       1.0000000000000002, which invokeScorer rejects as out of range — so an
+       identical pair errored the case and read as a broken scorer. */
+    const v = Array.from({ length: 384 }, (_, i) => Math.sin(i) / 19.6);
+    const norm = Math.sqrt(v.reduce((s, x) => s + x * x, 0));
+    const unit = v.map((x) => x / norm);
+
+    const self = cosineSimilarity(unit, unit);
+
+    expect(self).toBeLessThanOrEqual(1);
+    expect(self).toBeCloseTo(1, 10);
+  });
+
+  it('never drops below -1 either', () => {
+    const v = Array.from({ length: 384 }, (_, i) => Math.cos(i));
+    expect(cosineSimilarity(v, v.map((x) => -x))).toBeGreaterThanOrEqual(-1);
+  });
+
   it('throws on a length mismatch, which is always a bug', () => {
     expect(() => cosineSimilarity([1, 0], [1, 0, 0])).toThrow(/lengths differ/);
   });

@@ -231,10 +231,11 @@ describe('loadCases', () => {
 
     const cases = await loadCases(dir);
 
-    expect(cases).toHaveLength(4);
+    expect(cases).toHaveLength(5);
     expect(cases.map((c) => c.id)).toEqual([
       'billing-question-schema-01',
       'cancellation-or-complaint-01',
+      'no-tool-abuse-01',
       'outage-escalation-01',
       'refund-damaged-item-01',
     ]);
@@ -249,7 +250,7 @@ describe('loadCases', () => {
 
     /* A scorer registered but never applicable is a scorer nobody has watched
        produce a number. `schema` was the last one missing. */
-    for (const key of ['fields', 'schema', 'similar', 'format', 'rubric']) {
+    for (const key of ['fields', 'schema', 'similar', 'format', 'rubric', 'toolCalls']) {
       expect(declared.has(key), `no case declares expect.${key}`).toBe(true);
     }
   });

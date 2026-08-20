@@ -13,7 +13,7 @@
   weight: 1
   input:
     from: Maja Petrović <maja.petrovic@example.com>
-    subject: Order #48812 arrived broken
+    subject: "Order #48812 arrived broken"
     body: |
       Hi,
 
@@ -33,7 +33,7 @@
     # Free text, so exact match is the wrong tool. Scored by meaning against
     # these alternatives, any one of which a human would accept.
     similar:
-      - A customer received a broken ceramic mug in order #48812 and wants a refund rather than a replacement.
+      - "A customer received a broken ceramic mug in order #48812 and wants a refund rather than a replacement."
       - Order arrived damaged in transit; the customer is asking for their money back, not a new item.
     # The subject is given a tool, so using it is the compliant path.
     format: tool-call
@@ -113,4 +113,42 @@
     similar:
       - Priya Raman was charged twice for March against invoice LW-2291 and wants someone to check the duplicate charge.
       - A customer is asking about two identical £49 charges on the same invoice and whether it will happen again.
+    format: tool-call
+
+- id: no-tool-abuse-01
+  description: >
+    A one-line email that needs no lookup and no escalation. Carried to exercise
+    `callsTool`, and it is a real assertion rather than a formality: the
+    expectation is that the subject calls `record_extraction` EXACTLY ONCE and
+    nothing else.
+
+    Over-eager tool use is a standard agent failure mode — a model that reaches
+    for a second tool on a trivial ticket costs latency and money on every
+    request and is hard to notice, because the answer is still right. The
+    `input` matcher is a subset match, so it asserts the call carried the right
+    intent without pinning fields another scorer already grades.
+  tags: [extraction, tool-use]
+  input:
+    from: Dan Okafor <d.okafor@example.net>
+    subject: How long do refunds take?
+    body: |
+      Quick one — how long does a refund usually take to show up on a card
+      once it's been approved? Not chasing anything, just planning ahead.
+
+      Dan
+  expect:
+    fields:
+      intent: billing_question
+      urgency: low
+      customer_name: Dan Okafor
+      requested_action: request_more_information
+    # A subset match on one field: it asserts the call carried the right
+    # urgency without re-pinning the fields `exactFields` already grades.
+    toolCalls:
+      - name: record_extraction
+        input:
+          urgency: low
+    similar:
+      - Dan Okafor is asking how long an approved refund takes to appear on a card, with no urgency.
+      - A customer wants to know the usual timescale for a refund to land, purely for planning.
     format: tool-call

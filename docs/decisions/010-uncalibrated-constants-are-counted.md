@@ -14,9 +14,11 @@ Evidence: Direct, from this repository's own history, and now from one
           MEASURED, 2026-08-20: `semantic-similarity.threshold` was counted as
           uncalibrated in every report, then calibrated against 10 hand-labelled
           pairs (`npm run calibrate:semantic`). The groups do not separate:
-          lowest correct 0.272, highest incorrect 1.000, margin -0.728. No
+          lowest correct 0.506, highest incorrect 0.898, margin -0.392. No
           threshold classifies the set, so none was adopted and the constant is
-          still declared as a guess. That is the mechanism working — a counted
+          still declared as a guess. (The first run of this reported a margin of
+          -0.728 off a pair scoring exactly 1.000 — a YAML truncation defect,
+          not a finding. Corrected, and now guarded by src/eval-data.test.ts.) That is the mechanism working — a counted
           assumption was examined and survived as an assumption, with a reason
           on the record rather than a number invented to close the ticket.
 

@@ -93,7 +93,11 @@ describe('loadFixtures', () => {
        quietly relabelled — or a captured one being quietly replaced. */
     expect(recorded).toHaveLength(3);
     expect(recorded.every((p) => p.kind === 'recorded' && p.model === 'claude-sonnet-5')).toBe(true);
-    expect(provenances.filter((p) => p.kind === 'hand-authored')).toHaveLength(1);
+    /* Two cases were added without budget for a live run. Asserting the exact
+       split is what stops a hand-written fixture being quietly relabelled, and
+       what will fail loudly the moment they are re-recorded — which is the
+       reminder to update this number rather than a nuisance. */
+    expect(provenances.filter((p) => p.kind === 'hand-authored')).toHaveLength(2);
   });
 });
 

@@ -352,7 +352,14 @@ export function cosineSimilarity(a: readonly number[], b: readonly number[]): nu
   }
 
   if (normA === 0 || normB === 0) return 0;
-  return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+
+  /* CLAMPED. Cosine is defined on [-1, 1], and floating-point summation of an
+     already-normalised 384-dimension dot product routinely lands an ulp or two
+     outside it — identical inputs give 1.0000000000000002. `invokeScorer`
+     rejects any score outside 0..1, so without this an identical pair errors
+     the whole case with "value must be within 0..1", which reads as a broken
+     scorer rather than a rounding artefact. It was found exactly that way. */
+  return Math.min(1, Math.max(-1, dot / (Math.sqrt(normA) * Math.sqrt(normB))));
 }
 
 function readSimilarExpectation(scorerName: string, evalCase: EvalCase): string[] {
