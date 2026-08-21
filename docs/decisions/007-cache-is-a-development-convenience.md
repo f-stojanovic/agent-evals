@@ -11,12 +11,6 @@ Evidence: Partial. The cache exists and its rules are covered by
           here has been seen to stay green through a model change it should
           have caught.
 
-          Our local static analysis ran with a cache; CI ran without one. The
-          project's own triage notes opened with "if it fails locally but passes on
-          master, clear the cache before investigating" — which tells you how often
-          a stale cache sent somebody hunting a violation that did not exist. The
-          cache was worth having and never worth trusting for a verdict.
-
 ## Context
 
 Iterating on a suite means running it repeatedly against inputs that have not
