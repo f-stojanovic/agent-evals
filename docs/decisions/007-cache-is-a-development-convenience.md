@@ -11,13 +11,11 @@ Evidence: Partial. The cache exists and its rules are covered by
           here has been seen to stay green through a model change it should
           have caught.
 
-          A static-analysis major upgrade increased the CI baseline from 3,868 to 
-          4,829 entries in a single commit. 25% increase from nothing changed about 
-          the code; new kinds of errors and differently named ones. The regeneration 
-          touched thirty thousand lines. I joined 2 months later and spent eight commits 
-          a whole day chasing down false positives of an issue that hadn’t existed in the 
-          ORM extension part of the new version. Two versions of the same tool don’t produce 
-          the same count, and nothing in the tooling mentioned it openly.
+          Our local static analysis ran with a cache; CI ran without one. The
+          project's own triage notes opened with "if it fails locally but passes on
+          master, clear the cache before investigating" — which tells you how often
+          a stale cache sent somebody hunting a violation that did not exist. The
+          cache was worth having and never worth trusting for a verdict.
 
 ## Context
 

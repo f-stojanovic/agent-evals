@@ -35,11 +35,11 @@ Silent leniency — parse whatever is findable — throws the format signal away
 entirely. A model degrading from clean JSON to prose-with-a-code-block scores
 identically before and after.
 
-The only conscious leniency I saw implemented remotely intimately was changing the 
-architectural rule engine from “do not block” to “is no longer to be observed”. It 
-continued to go through the pipeline, it continued to be run and to produce output- 
-which no one read. Leniency which produces no distinct measurable output is not leniency. 
-It’s simply turning a light off very slowly until no one’s around any more.
+The only deliberate leniency I saw up close was changing the architectural rule
+engine from “do not block” to “no longer observed”. It stayed in the pipeline, it
+kept running and it kept producing output — which no one read. Leniency which
+produces no distinct measurable output is not leniency. It’s simply turning a
+light off very slowly until no one’s around any more.
 
 There is also a timing constraint. Relaxing extraction later moves every
 extraction score upward at once, which in a recorded baseline is indistinguishable

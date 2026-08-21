@@ -13,15 +13,14 @@ Evidence: Verified live, 2026-08-19. A baseline was recorded from a real
           Still unobserved: a regression caused by an actual change to a
           prompt or model, as opposed to one manufactured by comparing against
           the wrong baseline.
-          I was inside a gate I did not create for 9 months. It was baselined, 
-          by the team, on a single commit-an issue without fixing issues- at 9,390 
-          static  analysis violations-on the same day that it was switched to 
-          on-the-gate. Here is what it felt like to be on the inside: I couldn’t 
-          sneak in any violations.I had to commit a PR to the baseline file, so it 
-          was always cheaper to fix the source and, over 13 baseline commits, I 
-          probably removed a similar amount of things as I added to it. 
-          The gate did not train caution. It priced carelessness: the penalty affected 
-          all of us, including the not careful.
+          I was inside a gate I did not create for 9 months. It was baselined by
+          the team in a single commit — accepting the issues rather than fixing
+          them — at 9,390 static analysis violations, on the same day the gate was
+          switched on. I couldn't sneak in any violations. I had to commit a PR to
+          the baseline file, so it was always cheaper to fix the source, and over
+          13 baseline commits I probably removed a similar amount as I added.
+          The gate did not train caution. It priced carelessness: the penalty
+          affected all of us, including the not careful.
 
 ## Context
 

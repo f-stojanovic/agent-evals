@@ -42,8 +42,10 @@ and some kind of $1 cap where if below $1, fee goes away – which I then remove
 later as a “per-entity config” that no one could trace where the hell the dollar came from). 
 Default fee then got set to 0 once inherited by non-prod and started charging fees nobody 
 was looking for 1 month later. So that was 3 edits over 4 months, based off of choosing 2 
-numbers in 10 seconds. The honest response is not to remove the constants. A harness needs  
-defaults. It is to refuse to let them disappear into the code.
+numbers in 10 seconds.
+
+The honest response is not to remove the constants. A harness needs defaults. It
+is to refuse to let them disappear into the code.
 
 ## Decision
 

@@ -37,9 +37,6 @@ side nothing changed. They did not touch that paragraph.
 That is the whole mechanism. A transcribed number has no link to its source, so
 nothing can tell it has expired.
 
-<!-- FILIP: a number in a README, runbook or dashboard description that was
-     right when written and quietly went wrong — how long did it stay, and what
-     decision did somebody make on it before anyone noticed? -->
 
 ## Decision
 

@@ -54,8 +54,8 @@ I saw an architectural rule engine with 38,835 baseline entries across three fil
 ship, be demoted to non-blocking seven weeks later and replaced entirely three weeks 
 after that. No human could diff something that big and no human did, so it just churned 
 along creating new violations behind a gate that everyone had implicitly stopped reading. 
-The replacement shipped with 3,147 entries and by months later I could still find 
-itwhitelistingtwo entirely deleted datastores, purely by chance and because the file was 
+The replacement shipped with 3,147 entries and months later I could still find it
+whitelisting two entirely deleted datastores, purely by chance and because the file was
 tiny enough that one obviously wrong line stood out as… well, obviously wrong.
 
 **PII.** Real eval inputs are customer emails, support tickets, scraped pages.

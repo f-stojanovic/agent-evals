@@ -8,13 +8,13 @@ Evidence: Partial. Both guards are covered by src/scorers/registry.test.ts,
           an edit. Neither guard has ever caught a real authoring mistake,
           because every case in this repository was written by one person in
           one sitting.
-          In a rebase I spotted two unit tests that have had been passing for months 
+          In a rebase I spotted two unit tests that had been passing for months
           whilst not testing anything at all. One was mocking an interface and calling 
           a method which only existed on the concrete implementation of the interface – 
           the mock returned null, and the test never got anywhere near the code which was 
           claiming to be under test. The other was asserting fixed hardcoded dates that had
-          long passed so the policy being tested fell back to wallclocktime for its 
-          injected dates rather than the ones I'd hardcoded into the test. 
+          long passed, so the policy being tested fell back to wall-clock time for
+          its injected dates rather than the ones I'd hardcoded into the test.
           Neither was one of my tests nor have either ever failed. 
           Which is the issue, a failing test grabs the eye, one that asserts something but 
           tests it vacuously will not.
