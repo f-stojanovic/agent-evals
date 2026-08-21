@@ -37,7 +37,7 @@ identically before and after.
 
 The only deliberate leniency I saw up close was changing the architectural rule
 engine from “do not block” to “no longer observed”. It stayed in the pipeline, it
-kept running and it kept producing output — which no one read. Leniency which
+kept running and it kept producing output - which no one read. Leniency which
 produces no distinct measurable output is not leniency. It’s simply turning a
 light off very slowly until no one’s around any more.
 

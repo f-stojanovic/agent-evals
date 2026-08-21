@@ -39,8 +39,8 @@ every push. "Did the model get worse?" is none of those.
 
 I made use of this split, I didn't engineer it. Static analysis, formatting, and the 
 full test suite had a green light for every push; the smoke tests, requiring a real 
-deployed app and the entire checkout process, were only ever triggered manual dispatch 
-for. The first tier which could run hundreds of times per day ended up defining for the 
+deployed app and the entire checkout process, were only ever triggered by manual
+dispatch. The first tier which could run hundreds of times per day ended up defining for the 
 team what it means for "it" to break. The second would run when some part of the system's 
 release date felt imminent, which inevitably meant that the check would trigger late - a 
 compromise they seemed to be ok with.

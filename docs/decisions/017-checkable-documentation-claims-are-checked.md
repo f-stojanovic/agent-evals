@@ -29,8 +29,8 @@ Round three made this unarguable. All three divergences were introduced by the
 same pass that correctly updated other parts of the same files.
 
 But these were rules that I enforced, not rules that I wrote. The team had sixty 
-architecture decision records, and we had quite a few of them there are duplicates: 
-Once as descriptive text, once as a static-analysis rule or as layer-dependency 
+architecture decision records, and quite a few of them were duplicated: once as
+descriptive text, once as a static-analysis rule or as layer-dependency
 configuration that blocked the build. I never had to remember one. I only know that 
 I violated one when the ci report told me I did. I don’t remember the content of any 
 ADR that only exists as descriptive text.

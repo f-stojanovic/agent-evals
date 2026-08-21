@@ -29,7 +29,7 @@ concrete cost is an afternoon spent bisecting prompt changes to explain a
 regression caused by `npm update`.
 
 The CI-baseline, in a single-shot static-analysis major upgrade, went from 3868 to 4829 
-entries (increase of 25%). This was with no change in code; it was entirely an increased 
+entries (increase of 25%). This was with no change in code; it was entirely increased 
 categorization or retargeted messages, in about 30k lines. I was a new employee there for 
 2 months when they landed that. Spent a full day and 8 commits chasing down false positives
 due to a bug in their new ORM extension. It's not as if the two versions of this tool were

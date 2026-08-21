@@ -34,12 +34,12 @@ and worse, it tells the reader that the repository's other claims were not
 checked either. Of everything in this project, it is the one category of error
 that invalidates the rest.
 
-The hardcoded date test — the same one from ADR 005, read here for what it claimed
-rather than for how it passed — wasn't just using a value, it was making an assertion: it 
+The hardcoded date test (the same one from ADR 005, read here for what it claimed
+rather than for how it passed) wasn't just using a value, it was making an assertion: it 
 said this date was in the future, because it was, when written. That assertion simply 
 became untrue without anyone touching the file, and yet it didn't break Anything™ in 
 the test. And now it just continued to pass with the wrong values for a duration I can’t 
-figure out fromgit. That’s the character of the failure: not wrong data, but a claim which 
+figure out from git. That’s the character of the failure: not wrong data, but a claim which 
 was true when written and was never re-validated.
 
 ## Decision

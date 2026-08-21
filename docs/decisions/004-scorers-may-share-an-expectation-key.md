@@ -38,7 +38,7 @@ large share of legitimate transactions. The second prevented payment retry, whic
 unfortunately also carried the fulfillment events, and which I called a 'zombie guard'
 in the commit removing it: I took it out 3 days after it went in and added another guard
 that only blocked the invalid part. They both passed the test suite. They both passed
-static analysis. Neither was caught by any machine at all — and I wrote each guard with
+static analysis. Neither was caught by any machine at all; and I wrote each guard with
 a justification.
 
 It also blocked the use case it was supposed to enable. The `name` override on the

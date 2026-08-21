@@ -35,11 +35,12 @@ thresholds. ADR 009 pins the models. A judge adopted on the strength of "the
 outputs look reasonable" would be the largest unexamined assumption in the system,
 sitting in the same column as `exactFields`.
 
-I have no numbers here. What I have is an informal nine-month sequence. Review missed a
-guard that was far too loose for the real transaction volume, and missed a validator that
-blocked a legitimate admin transaction. Static analysis caught three inaccurate docblocks
-that review had signed off without noticing. Across all that time I struggle to recall the
-two ever catching anything of the same class, which suggests both are needed.
+I have no numbers here. I've simply observed an informal, nine-month sequence for three
+patterns. Review missed a guard that was far too loose for real transaction volume; review
+missed a validator which threw a legitimate admin transaction for a block. Static analysis
+caught three inaccurate docblocks where review had signed off in ignorance. Across all that
+time I struggle to recall ever both finding anything of the same class, which suggests both
+are needed.
 
 ## Decision
 

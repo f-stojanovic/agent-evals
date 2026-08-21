@@ -14,8 +14,8 @@ Evidence: Verified live, 2026-08-19. A baseline was recorded from a real
           prompt or model, as opposed to one manufactured by comparing against
           the wrong baseline.
           I was inside a gate I did not create for 9 months. It was baselined by
-          the team in a single commit — accepting the issues rather than fixing
-          them — at 9,390 static analysis violations, on the same day the gate was
+          the team in a single commit - accepting the issues rather than fixing
+          them - at 9,390 static analysis violations, on the same day the gate was
           switched on. I couldn't sneak in any violations. I had to commit a PR to
           the baseline file, so it was always cheaper to fix the source, and over
           13 baseline commits I probably removed a similar amount as I added.
