@@ -2,7 +2,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { calibrate, formatCalibrationReport, loadCalibrationCases } from './calibrate.js';
 import { subjectOutput } from './testing.js';
-import type { CalibrationCase } from './calibrate.js';
+import type { CalibrationCase, LabelKind } from './calibrate.js';
 import type { Score, ScoreArgs, Scorer } from './types.js';
 
 /** A scorer with hardcoded answers per case id, so the MAE arithmetic is
@@ -23,9 +23,14 @@ function fixedScorer(scores: Record<string, number>): Scorer {
   };
 }
 
-const calibrationCase = (id: string, humanScore: number): CalibrationCase => ({
+const calibrationCase = (
+  id: string,
+  humanScore: number,
+  labelKind: LabelKind = 'ground-truth',
+): CalibrationCase => ({
   id,
   provenance: { kind: 'hand-authored', author: 'test' },
+  labelKind,
   humanScore,
   expect: { rubric: 'anything' },
   output: subjectOutput({ text: 'output' }),
@@ -105,6 +110,40 @@ describe('calibrate', () => {
     expect(rendered).toContain('Largest divergences');
     expect(rendered).toContain('0.150');
   });
+
+  /* A contested label is one annotator's line through a genuine ambiguity. The
+     judge disagreeing with it is not evidence the judge is wrong, so an MAE
+     that mixes it in reports disagreement about the world as inaccuracy in the
+     instrument. Both figures are published; neither replaces the other. */
+  it('separates error against contested labels from error against ground truth', async () => {
+    const report = await calibrate({
+      cases: [
+        calibrationCase('solid', 1.0),
+        calibrationCase('ambiguous', 0.4, 'contested'),
+      ],
+      scorer: fixedScorer({ solid: 0.9, ambiguous: 0.8 }),
+    });
+
+    /* Errors are 0.1 and 0.4 → headline 0.25, ground-truth-only 0.1. */
+    expect(report.meanAbsoluteError).toBeCloseTo(0.25);
+    expect(report.meanAbsoluteErrorGroundTruth).toBeCloseTo(0.1);
+
+    const rendered = formatCalibrationReport(report);
+    expect(rendered).toContain('ground-truth only');
+    expect(rendered).toContain('ambiguous');
+  });
+
+  /* Excluding every case would leave `mean(...)` returning 0, which renders as
+     0.000 and reads as perfect agreement. It has to fall back instead. */
+  it('does not report a ground-truth MAE of zero when nothing is ground truth', async () => {
+    const report = await calibrate({
+      cases: [calibrationCase('a', 0.4, 'contested'), calibrationCase('b', 0.6, 'contested')],
+      scorer: fixedScorer({ a: 0.8, b: 0.2 }),
+    });
+
+    expect(report.meanAbsoluteErrorGroundTruth).toBeCloseTo(report.meanAbsoluteError);
+    expect(report.meanAbsoluteErrorGroundTruth).toBeGreaterThan(0);
+  });
 });
 
 describe('loadCalibrationCases', () => {
@@ -133,6 +172,58 @@ describe('loadCalibrationCases', () => {
     /* Recorded as the truth: these outputs were written by hand, so the MAE is
        agreement about invented outputs. ADR 015. */
     expect(cases.every((c) => c.provenance.kind === 'hand-authored')).toBe(true);
+  });
+
+  /**
+   * A rubric may state a RULE. It may not state the answer.
+   *
+   * "Deduct roughly 0.25 per wrong field" applies to any output a subject could
+   * produce. "Score it around 0.3" applies only to the one output sitting in
+   * front of the judge, and what comes back is then instruction-following
+   * wearing the clothes of judgement. It is not a hypothetical failure: two
+   * rubrics here carried target scores until 2026-08-24, and on
+   * cal-prose-not-json-01 the judge returned 0.30 against a rubric that said
+   * "score it around 0.3" — the calibration set was measuring its own
+   * instruction. See ADR 021.
+   */
+  it('states rules in its rubrics and never a target score', async () => {
+    const dir = fileURLToPath(new URL('../evals/calibration', import.meta.url));
+    const cases = await loadCalibrationCases(dir);
+
+    if (cases.length === 0) {
+      throw new Error('This check inspected nothing: no calibration cases loaded.');
+    }
+
+    /* "score ... around 0.3", "should score around 0.6". Deliberately not
+       "any number in a rubric": the arithmetic rules are numbers too, and a
+       check that forbade those would be reworded around within a week. */
+    const target = /scor\w*\s+(?:it|this|the output|them)?\s*(?:around|approximately|about|roughly)\s*[01](?:\.\d+)?/i;
+
+    const offenders = cases
+      .filter((c) => target.test(String(c.expect['rubric'] ?? '')))
+      .map((c) => c.id);
+
+    expect(offenders).toEqual([]);
+  });
+
+  it('declares for every label whether a ground truth exists', async () => {
+    const dir = fileURLToPath(new URL('../evals/calibration', import.meta.url));
+    const cases = await loadCalibrationCases(dir);
+
+    if (cases.length === 0) {
+      throw new Error('This check inspected nothing: no calibration cases loaded.');
+    }
+
+    /* Required by the schema, so a new case cannot be added without somebody
+       deciding which kind its label is. */
+    expect(cases.every((c) => c.labelKind === 'ground-truth' || c.labelKind === 'contested')).toBe(
+      true,
+    );
+    /* If everything were contested there would be no judge-error figure at all;
+       if nothing were, the set would be claiming the ambiguous case has a right
+       answer. Both are findings, and both should fail loudly. */
+    expect(cases.some((c) => c.labelKind === 'ground-truth')).toBe(true);
+    expect(cases.some((c) => c.labelKind === 'contested')).toBe(true);
   });
 
   it('gives every case a frozen output, so calibration measures only the judge', async () => {

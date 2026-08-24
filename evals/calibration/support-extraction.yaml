@@ -8,11 +8,22 @@
 # score could mean the judge drifted or the subject did, and the measurement
 # would be uninterpretable.
 #
-# Fixed is not captured. EVERY OUTPUT BELOW IS HAND-AUTHORED — each carries a
-# required `provenance` field saying so (ADR 015). The measured MAE of 0.031 is
-# therefore agreement between one judge and one annotator on outputs that
-# annotator also invented. Re-recording these from a real run would make the
-# figure mean considerably more.
+# WHO WROTE WHAT. The outputs, rubrics and descriptions below were written by an
+# assistant model, not by a person. Until 2026-08-24 every case claimed
+# `author: Filip Stojanović` in the field that exists to stop exactly that kind
+# of false attribution (ADR 015, ADR 021). The `provenance.author` now names the
+# actual writer.
+#
+# The `humanScore` labels ARE Filip Stojanović's, assigned 2026-08-24, replacing
+# the generated labels that preceded them. That replacement moved the measured
+# MAE from 0.031 to 0.102, which is the finding ADR 021 records: the earlier
+# number was agreement between a model and its own labels.
+#
+# `labelKind` separates two things an error against a label can mean:
+#   ground-truth — a competent annotator would land here; judge error is judge error
+#   contested    — no ground truth exists; two annotators reading the same
+#                  ambiguity land in different places, and the judge cannot be
+#                  expected to agree with either
 #
 # The set spans the range on purpose — two clearly-right, two clearly-wrong,
 # and several borderline. A calibration set of easy cases reports a flattering
@@ -20,20 +31,30 @@
 # place. If the judge's MAE is low here but high on the borderline cases only,
 # that is the finding, not a rounding error.
 #
+# RUBRICS STATE RULES, NEVER TARGETS. A rubric may say "deduct ~0.25 per wrong
+# field", which applies to any output. It may not say "score this around 0.3",
+# which applies only to the output in front of it and turns the judge's answer
+# into instruction-following. Two rubrics here did exactly that until
+# 2026-08-24; on cal-prose-not-json-01 the judge returned the stated number to
+# the decimal.
+#
 # `humanReason` is the answer key and is never shown to the judge.
 
 - id: cal-clear-correct-01
   provenance:
     kind: hand-authored
-    author: Filip Stojanović
+    author: Claude (Anthropic)
     note: >
-      Output written by hand to place this case at a chosen point on the
-      score range. Not captured from a model run.
+      Output and rubric written by an assistant model to place this case at a
+      chosen point on the score range. Not a person, and not captured from a
+      model run. The humanScore is Filip Stojanović's, assigned 2026-08-24.
   description: Unambiguous extraction, every field right. The judge should be near 1.
+  labelKind: ground-truth
   humanScore: 1.0
   humanReason: >
-    Correct on all four fields. Nothing here is a matter of taste — if the judge
-    scores this below 0.9 it is broken, not strict.
+    Correct on all four fields, with nothing plausible-but-wrong anywhere in it.
+    This is the case that has no judgement in it at all — if the judge scores it
+    below 0.9 the judge is broken, not strict.
   expect:
     rubric: >
       The output must be a JSON object extracting {intent, urgency, customer_name,
@@ -50,16 +71,19 @@
 - id: cal-clear-wrong-01
   provenance:
     kind: hand-authored
-    author: Filip Stojanović
+    author: Claude (Anthropic)
     note: >
-      Output written by hand to place this case at a chosen point on the
-      score range. Not captured from a model run.
+      Output and rubric written by an assistant model to place this case at a
+      chosen point on the score range. Not a person, and not captured from a
+      model run. The humanScore is Filip Stojanović's, assigned 2026-08-24.
   description: Confidently wrong on every field. The judge should be near 0.
-  humanScore: 0.0
+  labelKind: ground-truth
+  humanScore: 0.1
   humanReason: >
-    Every field contradicts the email. A judge that awards partial credit for
-    "well-formed JSON" is rewarding the wrong property, and that is exactly the
-    miscalibration this set exists to catch.
+    0.1. Every field contradicts the email. The reasoning behind the exact value
+    rather than a flat 0 was not recorded, and is left thin here rather than
+    reconstructed — see ADR 021 on why a label is not improved by a
+    justification written after the fact.
   expect:
     rubric: >
       The output must be a JSON object extracting {intent, urgency, customer_name,
@@ -67,7 +91,7 @@
       that arrived shattered and explicitly asks for a refund rather than a
       replacement. Score 1.0 if all four fields are correct. Deduct roughly 0.25
       per field that is wrong or missing. Well-formed JSON with wrong contents
-      scores 0 — format is measured separately.
+      earns no credit for being well formed — format is measured separately.
   output:
     model: subject-model-v1
     text: |
@@ -76,17 +100,20 @@
 - id: cal-partial-three-of-four-01
   provenance:
     kind: hand-authored
-    author: Filip Stojanović
+    author: Claude (Anthropic)
     note: >
-      Output written by hand to place this case at a chosen point on the
-      score range. Not captured from a model run.
+      Output and rubric written by an assistant model to place this case at a
+      chosen point on the score range. Not a person, and not captured from a
+      model run. The humanScore is Filip Stojanović's, assigned 2026-08-24.
   description: Three fields right, urgency overstated. Anchors the middle of the range.
-  humanScore: 0.75
+  labelKind: ground-truth
+  humanScore: 0.6
   humanReason: >
-    Exactly one field wrong out of four, and the rubric says deduct ~0.25 per
-    field. This case tests whether the judge can follow an arithmetic rubric
-    rather than forming a general impression — a judge that returns 0.5 here is
-    reading "one thing is wrong" as "roughly half right".
+    Deliberately below the arithmetic 0.75 that "one field of four" would give.
+    The wrong field is urgency, and it is overstated: `critical` on a shattered
+    mug puts a false alarm in front of whoever is triaging, which costs more
+    than a missing value would. An arithmetic rubric prices every field the
+    same; the consequences do not.
   expect:
     rubric: >
       The output must be a JSON object extracting {intent, urgency, customer_name,
@@ -94,7 +121,9 @@
       that arrived shattered and explicitly asks for a refund. The correct urgency
       is medium: the customer is annoyed but nothing is time-critical. Score 1.0
       if all four fields are correct and deduct roughly 0.25 per field that is
-      wrong or missing.
+      wrong or missing. An urgency that is too HIGH raises a false alarm for
+      whoever triages the queue; deduct more for that than for one that is too
+      low.
   output:
     model: subject-model-v1
     text: |
@@ -103,19 +132,22 @@
 - id: cal-hallucinated-name-01
   provenance:
     kind: hand-authored
-    author: Filip Stojanović
+    author: Claude (Anthropic)
     note: >
-      Output written by hand to place this case at a chosen point on the
-      score range. Not captured from a model run.
+      Output and rubric written by an assistant model to place this case at a
+      chosen point on the score range. Not a person, and not captured from a
+      model run. The humanScore is Filip Stojanović's, assigned 2026-08-24.
   description: >
     Invents a first name the email never contained. Tests whether the judge
     penalises fabrication harder than omission, as the rubric demands.
-  humanScore: 0.5
+  labelKind: ground-truth
+  humanScore: 0.25
   humanReason: >
-    Three fields correct, but the fabricated "Aleksandar" is the failure mode
-    that matters most in extraction — a plausible invention is harder to catch
-    downstream than a blank. Scored below a plain 3-of-4 (0.75) for that reason.
-    Judges tend to score this too generously because the output reads fluently.
+    A fabricated name is the worst thing in this set. "Aleksandar Novak" reads
+    like a real value, so it passes review; a blank field does not, because a
+    blank field is visibly missing. Three correct fields do not buy that back,
+    and scoring it at a plain 3-of-4 would price a fabrication as an ordinary
+    miss.
   expect:
     rubric: >
       Extract {intent, urgency, customer_name, requested_action} from an email
@@ -133,29 +165,37 @@
 - id: cal-borderline-intent-01
   provenance:
     kind: hand-authored
-    author: Filip Stojanović
+    author: Claude (Anthropic)
     note: >
-      Output written by hand to place this case at a chosen point on the
-      score range. Not captured from a model run.
+      Output and rubric written by an assistant model to place this case at a
+      chosen point on the score range. Not a person, and not captured from a
+      model run. The humanScore is Filip Stojanović's, assigned 2026-08-24.
   description: >
     THE HARD ONE. The ambiguous case from evals/cases — a venting customer who
     asks about cancellation terms without asking to cancel. Two competent
     annotators disagree, so a high judge spread here is correct behaviour.
-  humanScore: 0.6
+  labelKind: contested
+  humanScore: 0.4
   humanReason: >
-    The output says `complaint`, which the case's own `acceptable` list marks as
-    defensible, but the human reviewer's primary label is `cancellation_request`.
-    Not wrong, not the preferred reading. If the judge returns high disagreement
-    across samples on this case that is a feature — it is reporting the ambiguity
-    that is genuinely there.
+    Two of the four fields are the defensible reading rather than the right one,
+    and defensible is not correct. An output can be argued for and still be the
+    one you would not want recorded against the ticket.
+
+    This case has no ground truth. The label is one annotator's line through an
+    ambiguity a second annotator would draw elsewhere — the previous generated
+    label put it at 0.6 on the same output — so judge error here is not evidence
+    the judge is miscalibrated. It is marked `contested` for that reason and the
+    report totals it separately.
   expect:
     rubric: >
       Extract {intent, urgency, customer_name, requested_action} from an email in
       which a customer complains about a broken export and then asks what the
       notice period is on the annual plan. The preferred intent is
       `cancellation_request`; `complaint` and `billing_question` are defensible
-      alternatives that should score around 0.6 rather than 0. urgency `high` is
-      preferred, `medium` is defensible. customer_name must be "A. Novak" exactly.
+      alternatives. urgency `high` is preferred, `medium` is defensible.
+      customer_name must be "A. Novak" exactly. Score 1.0 for four preferred
+      values; deduct roughly 0.25 for a field that is wrong, and roughly half of
+      that for a field that is defensible but not the preferred reading.
     acceptable:
       intent: [complaint, billing_question]
       urgency: [medium]
@@ -167,26 +207,36 @@
 - id: cal-prose-not-json-01
   provenance:
     kind: hand-authored
-    author: Filip Stojanović
+    author: Claude (Anthropic)
     note: >
-      Output written by hand to place this case at a chosen point on the
-      score range. Not captured from a model run.
+      Output and rubric written by an assistant model to place this case at a
+      chosen point on the score range. Not a person, and not captured from a
+      model run. The humanScore is Filip Stojanović's, assigned 2026-08-24.
   description: >
-    Correct understanding, wrong format entirely. Tests that the judge grades the
-    rubric it was given rather than the property it finds most salient.
-  humanScore: 0.3
+    Correct understanding, delivered as prose rather than JSON. Tests that the
+    judge grades the content it was asked about and leaves the envelope to the
+    scorer that measures envelopes.
+  labelKind: ground-truth
+  humanScore: 0.9
   humanReason: >
-    The content is right — it identified the refund request, the customer, and
-    the action. But the rubric asks for a JSON object and this is a paragraph, so
-    it fails the stated criterion while demonstrating the understanding. 0.3
-    credits the comprehension without pretending the requirement was met. Judges
-    split hard on this one; some give 0.9 for being "essentially correct".
+    The content is right: the refund request, the customer, the action and the
+    urgency are all there and all correct. Format is a separate assertion,
+    declared per case and measured by `formatCompliance` (ADR 019), so grading
+    it again here would penalise the same defect twice and report one number
+    that answers neither question. Not a full 1.0 only because the values have
+    to be read out of a sentence rather than lifted from a field.
   expect:
     rubric: >
-      The output must be a JSON object with the keys {intent, urgency,
-      customer_name, requested_action}. Prose that describes the right answer
-      without producing the requested structure has not met the requirement:
-      score it around 0.3 to credit the comprehension, not higher.
+      Grade ONLY whether the content is correct: does the response identify the
+      right intent, urgency, customer_name and requested_action for a support
+      email in which Maja Petrović reports a shattered mug in order #48812 and
+      explicitly asks for a refund rather than a replacement? The correct urgency
+      is medium. Deduct roughly 0.25 per value that is wrong, missing, or not
+      recoverable from the response.
+
+      Do NOT grade the format. Whether the response is a JSON object, a tool
+      call, or a paragraph is asserted separately by the case and measured by a
+      different scorer. A correct answer written as prose is a correct answer.
   output:
     model: subject-model-v1
     text: >
@@ -197,18 +247,20 @@
 - id: cal-tool-call-correct-01
   provenance:
     kind: hand-authored
-    author: Filip Stojanović
+    author: Claude (Anthropic)
     note: >
-      Output written by hand to place this case at a chosen point on the
-      score range. Not captured from a model run.
+      Output and rubric written by an assistant model to place this case at a
+      chosen point on the score range. Not a person, and not captured from a
+      model run. The humanScore is Filip Stojanović's, assigned 2026-08-24.
   description: >
     Right answer delivered through a tool call rather than text. Checks that the
     judge does not penalise a compliant path it happens to see less often.
+  labelKind: ground-truth
   humanScore: 1.0
   humanReason: >
-    Using the provided tool is the intended path, and every field is correct.
-    Scoring this below a text response with identical content would mean the
-    judge is grading familiarity rather than quality.
+    Every field is correct and the tool is the intended path. Scoring this below
+    a text response carrying identical values would mean the judge is grading
+    familiarity rather than quality.
   expect:
     rubric: >
       Extract {intent, urgency, customer_name, requested_action} from Maja
@@ -229,16 +281,18 @@
 - id: cal-refused-01
   provenance:
     kind: hand-authored
-    author: Filip Stojanović
+    author: Claude (Anthropic)
     note: >
-      Output written by hand to place this case at a chosen point on the
-      score range. Not captured from a model run.
+      Output and rubric written by an assistant model to place this case at a
+      chosen point on the score range. Not a person, and not captured from a
+      model run. The humanScore is Filip Stojanović's, assigned 2026-08-24.
   description: Model declined to answer. Should be near 0 without being treated as an error.
+  labelKind: ground-truth
   humanScore: 0.0
   humanReason: >
-    A refusal extracts nothing. It is a legitimate model behaviour and a total
-    failure at the task, and the judge should say so plainly rather than awarding
-    credit for the polite hedge.
+    A refusal extracts nothing, so there is nothing to award. It is a legitimate
+    model behaviour and a total failure at the task, and the two facts do not
+    offset. A judge that credits the politeness of the hedge is scoring manner.
   expect:
     rubric: >
       Extract {intent, urgency, customer_name, requested_action} from a customer

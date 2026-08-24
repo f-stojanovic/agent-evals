@@ -163,25 +163,25 @@ Verbatim, current subject, comparing against its own recorded baseline:
 ```
 # Eval run — live
 
-2026-08-24T14:27:27.795Z · 5 cases · 65.7s
+2026-08-24T15:28:52.768Z · 5 cases · 44.2s
 
 **GATE: PASS** — no regression against the baseline.
 
 | case                            | calls-tool | exact-fields | format-compliance | llm-judge | matches-schema | semantic-similarity | mean  | sd    | Δ vs baseline   | via       | cost    | ms    |
 | ------------------------------- | ---------- | ------------ | ----------------- | --------- | -------------- | ------------------- | ----- | ----- | --------------- | --------- | ------- | ----- |
-|    billing-question-schema-01   | —          | 0.90         | 1.00              | —         | 1.00           | 0.81                | 0.927 | 0.050 | -0.025 (±0.095) | tool-call | $0.0335 | 40531 |
-|    cancellation-or-complaint-01 | —          | 0.95         | 1.00              | 0.84      | —              | 0.75                | 0.886 | 0.049 | +0.011 (±0.111) | tool-call | $0.0883 | 65731 |
-|    no-tool-abuse-01             | 1.00       | 1.00         | 1.00              | —         | —              | 0.92                | 0.980 | 0.002 | +0.001 (±0.052) | tool-call | $0.0310 | 30484 |
-|    outage-escalation-01         | —          | 1.00         | 1.00              | —         | —              | 0.55                | 0.850 | 0.027 | -0.072 (±0.075) | tool-call | $0.0343 | 31609 |
-|    refund-damaged-item-01       | —          | 1.00         | 1.00              | —         | —              | 0.84                | 0.948 | 0.003 | +0.008 (±0.056) | tool-call | $0.0323 | 23310 |
+|    billing-question-schema-01   | —          | 1.00         | 1.00              | —         | 1.00           | 0.78                | 0.945 | 0.007 | +0.018 (±0.096) | tool-call | $0.0319 | 21358 |
+|    cancellation-or-complaint-01 | —          | 0.95         | 1.00              | 0.88      | —              | 0.79                | 0.905 | 0.013 | +0.020 (±0.096) | tool-call | $0.0874 | 44168 |
+|    no-tool-abuse-01             | 1.00       | 1.00         | 1.00              | —         | —              | 0.92                | 0.980 | 0.001 | -0.000 (±0.052) | tool-call | $0.0287 | 15514 |
+|    outage-escalation-01         | —          | 1.00         | 1.00              | —         | —              | 0.63                | 0.877 | 0.032 | +0.026 (±0.088) | tool-call | $0.0343 | 19627 |
+|    refund-damaged-item-01       | —          | 1.00         | 1.00              | —         | —              | 0.83                | 0.943 | 0.004 | -0.004 (±0.055) | tool-call | $0.0322 | 23240 |
 
 ## Totals
 
-- cases: 5 · below threshold: 3 of 5 · errored 0
-- weighted score: **0.907**
-- latency: p50 31609ms · p95 65731ms · max 65731ms
-- cost: **$0.2195** — subject $0.1655, judge $0.0540
-- tokens: 26575 in / 5715 out
+- cases: 5 · below threshold: 2 of 5 · errored 0
+- weighted score: **0.921**
+- latency: p50 21358ms · p95 44168ms · max 44168ms
+- cost: **$0.2145** — subject $0.1596, judge $0.0549
+- tokens: 26575 in / 5323 out
 
 ### Output format distribution
 
@@ -271,10 +271,18 @@ is about.
 This is the most useful thing in this repository if you are building your own,
 and it is measured rather than argued.
 
-`npm run calibrate:semantic` scores 10 hand-labelled summary pairs against the
+`npm run calibrate:semantic` scores 10 labelled summary pairs against the
 local encoder. Five are correct paraphrases. Five are wrong — but three of those
 are wrong the way a model is actually wrong: fluent, on-topic, confident, and
 false about one fact.
+
+Those ten labels are **generated, not human**, and are queued for replacement —
+the judge set next door had exactly this defect and replacing its labels moved
+its measured error by roughly a factor of three
+([ADR 021](docs/decisions/021-only-a-human-may-assign-a-label.md)). The finding
+below survives that caveat better than most, because it is a negative result:
+the scorer fails to separate groups that a wrong label set would, if anything,
+make easier to separate.
 
 <!-- generated:semantic-calibration -->
 
@@ -415,9 +423,24 @@ So `evals/calibration/` holds cases with human-assigned scores spanning the
 range, each paired with a frozen output. `npm run calibrate` reports mean
 absolute and mean signed error against those labels.
 
+**The labels were replaced on 2026-08-24 and the measured error roughly
+tripled.** Until then they had been written by a model — the same class of
+system the judge is, grading outputs and rubrics that model had also written —
+and the number that came out was published as accuracy when it was consistency.
+Two of the rubrics made it worse by stating the target outright: one ended
+*"score it around 0.3 … not higher"* and the judge returned 0.30, an error of
+exactly zero on a case that measured nothing but instruction-following. With the
+target deleted and the rubric rewritten to grade content rather than format, the
+same judge on the same output returns 1.00.
+
+The labels are now Filip Stojanović's, the rubrics state rules and never
+targets, and each label declares whether the case has a ground truth at all —
+one of the eight does not, and it is reported separately rather than averaged in
+([ADR 021](docs/decisions/021-only-a-human-may-assign-a-label.md)).
+
 <!-- generated:judge-calibration -->
 
-**Measured: MAE 0.031 over n=8**, mean signed error +0.006. The labels are one pass by one annotator, so this measures agreement with one person.
+**Measured: MAE 0.102 over n=8**, mean signed error +0.077. Over the 7 cases that have a ground truth it is 0.050; the remainder are contested labels, where no right answer exists and judge error is disagreement rather than inaccuracy. The labels are one pass by one human annotator. The outputs and rubrics they grade were written by a model (ADR 021).
 
 <!-- /generated:judge-calibration -->
 
@@ -516,37 +539,32 @@ are in [`docs/decisions/`](docs/decisions/).
 
 Everything here is true as of the last live run. None of it is hypothetical.
 
-**The calibration labels are one annotator over eight cases.** The measured MAE
-is agreement with one person's unreviewed judgement, not with a ground truth.
-Two of the eight labels are contested judgement calls the author flagged at the
-time.
+**The calibration labels are one annotator over eight cases.** They are one
+person's judgement, assigned in one pass and not reviewed by a second reader.
+One of the eight is marked `contested` — a case with no right answer, where the
+judge sits well above the human and that distance is the ambiguity being
+reported rather than an error to close.
+
+**The judge's calibration figures published before 2026-08-24 were wrong in
+kind, not in value.** They measured a model against labels a model had written.
+Every earlier MAE quoted anywhere in this repository is withdrawn
+([ADR 021](docs/decisions/021-only-a-human-may-assign-a-label.md)).
 
 **The MAE is itself noisy.** Two runs of the identical calibration set an hour
 apart differed by about a third of its value, and the sign of the bias flipped
-between them. At n=8 the figure is a range, not a number — read the generated
-block as one draw.
+between them. That was measured on the old label set and there is no reason it
+would not hold for the new one, which has been run once. At n=8 the figure is a
+range, not a number — read the generated block as one draw.
 
-**`eval-live` has never completed successfully on GitHub Actions.** Its one
-dispatch failed — correctly — refusing a genuinely stale committed baseline with
-*"recorded in baseline format v1; this build writes v2 … re-record it"*. That
-is the guard firing on real infrastructure rather than on a laptop, and it is
-the only evidence so far that the gate works off this machine. The stale
-baseline is fixed; a green live run has not yet happened, and cannot until the
-API account has credit. `ci.yml` passes on every push.
-
-**The semantic threshold is uncalibrated, and calibration failed.** Against 10
-hand-labelled pairs the correct and incorrect groups do not separate at all
-(the margin is reported in the table above), so no threshold was adopted and the
-constant is still declared as a guess in every report. That is a limit of the scorer rather than of the
-labels — see "A semantic scorer cannot catch a fluent lie" above. The labels are
-one annotator's and are expected to be reviewed.
-
-**The live gate cannot currently run: the account is out of API credit.**
-`npm run eval` errors every case on a 400 from the provider. The harness
-classifies that as errored rather than failed, so it does not enter the
-baseline and is not reported as a quality result — but it does mean the live
-gate is unverifiable until the account is topped up. The committed baseline is
-current (v2, five cases) and the fixture gate is green.
+**The semantic threshold is uncalibrated, calibration failed, and its labels are
+still generated.** Against 10 pairs the correct and incorrect groups do not
+separate at all (the margin is reported in the table above), so no threshold was
+adopted and the constant is still declared as a guess in every report. That is a
+limit of the scorer rather than of the labels — see "A semantic scorer cannot
+catch a fluent lie" above. But the labels have not yet had the treatment the
+judge set got: they were written by a model and no human has reviewed them, so
+the separation figure is a model agreeing with itself and is knowingly in breach
+of [ADR 021](docs/decisions/021-only-a-human-may-assign-a-label.md).
 
 **The judge model pin is weak.** `claude-opus-5` is a moving target on the
 provider's side: the same id can be served by a different build than last month,

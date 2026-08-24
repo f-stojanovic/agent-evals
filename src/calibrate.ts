@@ -52,10 +52,26 @@ import type { EvalCase, Scorer, SubjectOutput, Usage } from './types.js';
  * is currently hand-authored, which means the MAE measures the judge against a
  * human's labels on a human's invented outputs. See ADR 015.
  */
+/**
+ * Whether an error against this label means anything about the judge.
+ *
+ * `ground-truth` — a competent annotator would land on this label, so distance
+ * from it is judge error and nothing else.
+ *
+ * `contested` — the case is genuinely ambiguous and no ground truth exists.
+ * Two annotators reading the same output land in different places, so the judge
+ * cannot be expected to agree with either, and an MAE that mixes these in
+ * reports disagreement about the world as if it were inaccuracy in the
+ * instrument. Required rather than optional: deciding which kind a label is, is
+ * part of assigning it.
+ */
+export type LabelKind = 'ground-truth' | 'contested';
+
 export type CalibrationCase = {
   id: string;
   provenance: Provenance;
   description?: string;
+  labelKind: LabelKind;
   /** The human's score, 0..1. The reference the judge is measured against. */
   humanScore: number;
   /** Why the human scored it that way. Not shown to the judge — it is the
@@ -79,6 +95,7 @@ const calibrationCaseSchema = z.strictObject({
   /* Required, for the same reason it is required on a fixture. */
   provenance: provenanceSchema,
   description: z.string().optional(),
+  labelKind: z.enum(['ground-truth', 'contested']),
   humanScore: z.number().min(0).max(1),
   humanReason: z.string().optional(),
   expect: z.record(z.string(), z.unknown()),
@@ -119,6 +136,7 @@ export async function loadCalibrationCases(dir: string): Promise<CalibrationCase
       cases.push({
         id: parsed.id,
         provenance: toProvenance(parsed.provenance),
+        labelKind: parsed.labelKind,
         humanScore: parsed.humanScore,
         expect: parsed.expect,
         output: {
@@ -147,6 +165,7 @@ export async function loadCalibrationCases(dir: string): Promise<CalibrationCase
 
 export type CalibrationResult = {
   caseId: string;
+  labelKind: LabelKind;
   humanScore: number;
   judgeScore: number;
   /** Signed, not absolute: the direction matters. A judge that is uniformly
@@ -159,8 +178,20 @@ export type CalibrationResult = {
 
 export type CalibrationReport = {
   results: CalibrationResult[];
-  /** Mean ABSOLUTE error — the headline number. */
+  /** Mean ABSOLUTE error over EVERY case — the headline number, and the one
+   *  that stays comparable across runs. */
   meanAbsoluteError: number;
+  /**
+   * Mean absolute error over the `ground-truth` cases only.
+   *
+   * The headline MAE mixes two different quantities: how far the judge is from
+   * a label a competent annotator would also have written, and how far it is
+   * from one annotator's line through a genuine ambiguity. Only the first is a
+   * property of the judge. This is reported beside the headline rather than
+   * instead of it, because quietly excluding the hard cases is how a
+   * calibration number becomes flattering.
+   */
+  meanAbsoluteErrorGroundTruth: number;
   /** Mean SIGNED error. Near zero with a high MAE means noise; far from zero
    *  means systematic bias, which is the easier problem to have. */
   meanSignedError: number;
@@ -193,6 +224,7 @@ export async function calibrate(args: {
 
     results.push({
       caseId: calibrationCase.id,
+      labelKind: calibrationCase.labelKind,
       humanScore: calibrationCase.humanScore,
       judgeScore: score.value,
       error: score.value - calibrationCase.humanScore,
@@ -202,12 +234,24 @@ export async function calibrate(args: {
   }
 
   const meanAbsoluteError = mean(results.map((r) => Math.abs(r.error)));
+  const groundTruth = results.filter((r) => r.labelKind === 'ground-truth');
+  /* Falls back to the headline rather than to 0 when every label is contested:
+     a set with no ground truth has no judge-error figure, and reporting 0.000
+     would read as perfect agreement. */
+  const meanAbsoluteErrorGroundTruth =
+    groundTruth.length === 0 ? meanAbsoluteError : mean(groundTruth.map((r) => Math.abs(r.error)));
   const meanSignedError = mean(results.map((r) => r.error));
   const worst = [...results]
     .sort((a, b) => Math.abs(b.error) - Math.abs(a.error))
     .slice(0, WORST_SHOWN);
 
-  return { results, meanAbsoluteError, meanSignedError, worst };
+  return {
+    results,
+    meanAbsoluteError,
+    meanAbsoluteErrorGroundTruth,
+    meanSignedError,
+    worst,
+  };
 }
 
 export function formatCalibrationReport(
@@ -216,6 +260,7 @@ export function formatCalibrationReport(
 ): string {
   const rows = report.results.map((r) => ({
     id: r.caseId,
+    kind: r.labelKind === 'contested' ? 'contested' : '',
     human: r.humanScore.toFixed(2),
     judge: r.judgeScore.toFixed(2),
     error: (r.error >= 0 ? '+' : '') + r.error.toFixed(2),
@@ -227,6 +272,7 @@ export function formatCalibrationReport(
 
   const widths = {
     id: width('id', 'case'),
+    kind: width('kind', 'label'),
     human: width('human', 'human'),
     judge: width('judge', 'judge'),
     error: width('error', 'error'),
@@ -235,24 +281,50 @@ export function formatCalibrationReport(
 
   const line = (
     id: string,
+    kind: string,
     human: string,
     judge: string,
     error: string,
     spread: string,
   ): string =>
-    `  ${id.padEnd(widths.id)}  ${human.padStart(widths.human)}  ` +
+    `  ${id.padEnd(widths.id)}  ${kind.padEnd(widths.kind)}  ${human.padStart(widths.human)}  ` +
     `${judge.padStart(widths.judge)}  ${error.padStart(widths.error)}  ` +
     `${spread.padStart(widths.spread)}`;
+
+  const contested = report.results.filter((r) => r.labelKind === 'contested');
 
   const lines = [
     'Judge calibration',
     '',
-    line('case', 'human', 'judge', 'error', 'spread'),
-    line('-'.repeat(widths.id), '-'.repeat(widths.human), '-'.repeat(widths.judge), '-'.repeat(widths.error), '-'.repeat(widths.spread)),
-    ...rows.map((row) => line(row.id, row.human, row.judge, row.error, row.spread)),
+    line('case', 'label', 'human', 'judge', 'error', 'spread'),
+    line(
+      '-'.repeat(widths.id),
+      '-'.repeat(widths.kind),
+      '-'.repeat(widths.human),
+      '-'.repeat(widths.judge),
+      '-'.repeat(widths.error),
+      '-'.repeat(widths.spread),
+    ),
+    ...rows.map((row) => line(row.id, row.kind, row.human, row.judge, row.error, row.spread)),
     '',
-    `  mean absolute error : ${report.meanAbsoluteError.toFixed(3)}`,
+    `  mean absolute error : ${report.meanAbsoluteError.toFixed(3)} (all ${report.results.length})`,
+    `  ground-truth only   : ${report.meanAbsoluteErrorGroundTruth.toFixed(3)} (${report.results.length - contested.length} of ${report.results.length})`,
     `  mean signed error   : ${(report.meanSignedError >= 0 ? '+' : '') + report.meanSignedError.toFixed(3)}`,
+    '',
+    /* Named, not just counted. A reader deciding whether to trust the headline
+       needs to know WHICH cases have no right answer, because those are the
+       ones the judge is being scored against one person's line through an
+       ambiguity. */
+    ...(contested.length === 0
+      ? ['  No contested labels: every case claims a ground truth.']
+      : [
+          `  ${contested.length} contested label${contested.length === 1 ? '' : 's'} — no ground truth exists, so`,
+          '  judge error on these is disagreement about the case, not inaccuracy:',
+          ...contested.map(
+            (r) =>
+              `    ${r.caseId} (human ${r.humanScore.toFixed(2)}, judge ${r.judgeScore.toFixed(2)})`,
+          ),
+        ]),
     '',
     /* A binary generous/harsh verdict on a signed error of +0.006 would be a
        confident claim about noise. The neutral band is one tenth of the

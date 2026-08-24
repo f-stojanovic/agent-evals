@@ -142,7 +142,12 @@ export async function figuresFromArtifacts(
   };
   const judge = (await read('.artifacts/calibrate-judge.json')) as {
     cases: number;
-    report: { meanAbsoluteError: number; meanSignedError: number };
+    report: {
+      meanAbsoluteError: number;
+      meanAbsoluteErrorGroundTruth: number;
+      meanSignedError: number;
+      results: { labelKind: string }[];
+    };
   };
 
   const { formatReport } = await import('./report.js');
@@ -157,10 +162,15 @@ export async function figuresFromArtifacts(
   ].join('\n');
 
   const mae = judge.report.meanAbsoluteError.toFixed(3);
+  const groundTruthCases = judge.report.results.filter((r) => r.labelKind === 'ground-truth').length;
   const judgeBlock =
     `**Measured: MAE ${mae} over n=${judge.cases}**, mean signed error ` +
     `${judge.report.meanSignedError >= 0 ? '+' : ''}${judge.report.meanSignedError.toFixed(3)}. ` +
-    `The labels are one pass by one annotator, so this measures agreement with one person.`;
+    `Over the ${groundTruthCases} cases that have a ground truth it is ` +
+    `${judge.report.meanAbsoluteErrorGroundTruth.toFixed(3)}; the remainder are contested labels, ` +
+    `where no right answer exists and judge error is disagreement rather than inaccuracy. ` +
+    `The labels are one pass by one human annotator. The outputs and rubrics they grade were ` +
+    `written by a model (ADR 021).`;
 
   return {
     generatedAt: new Date().toISOString(),

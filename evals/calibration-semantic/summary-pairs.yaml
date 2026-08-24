@@ -18,10 +18,21 @@
 # A calibration set of obviously-bad negatives reports a flattering separation
 # and tells you nothing about the case you needed the number for.
 #
-# LABELS ARE ONE PASS BY ONE ANNOTATOR and are expected to be reviewed.
+# WHO WROTE WHAT. The reference and candidate texts below were written by an
+# assistant model, not by a person. Until 2026-08-24 every pair claimed
+# `author: Filip Stojanović` in the field that exists to stop exactly that kind
+# of false attribution (ADR 015, ADR 021); `provenance.author` now names the
+# actual writer.
+#
+# THE LABELS HERE ARE STILL GENERATED and have NOT yet been reviewed by a human.
+# The judge calibration set next door had its labels replaced by Filip
+# Stojanović on 2026-08-24, which moved its measured error from 0.031 to 0.102.
+# These ten pairs are queued for the same replacement and until that
+# happens, any separation figure computed from them is a model agreeing with
+# itself. ADR 021 is the rule; this file is the outstanding instance of it.
 
 - id: sem-good-refund-01
-  provenance: { kind: hand-authored, author: Filip Stojanović }
+  provenance: { kind: hand-authored, author: Claude (Anthropic) }
   label: correct
   note: Close paraphrase, different wording throughout.
   reference:
@@ -29,7 +40,7 @@
   candidate: "Order #48812 arrived with a shattered mug; the customer is asking for their money back instead of a replacement."
 
 - id: sem-good-outage-01
-  provenance: { kind: hand-authored, author: Filip Stojanović }
+  provenance: { kind: hand-authored, author: Claude (Anthropic) }
   label: correct
   note: Correct, and much terser than the reference. Length asymmetry is normal.
   reference:
@@ -37,7 +48,7 @@
   candidate: Checkout has been down for 40 minutes with 503 errors and needs urgent engineering escalation.
 
 - id: sem-good-cancellation-01
-  provenance: { kind: hand-authored, author: Filip Stojanović }
+  provenance: { kind: hand-authored, author: Claude (Anthropic) }
   label: correct
   note: Captures both the complaint and the cancellation enquiry.
   reference:
@@ -45,7 +56,7 @@
   candidate: After months of a broken report export the customer has lost confidence and wants to know the notice period and whether they get money back mid-term.
 
 - id: sem-good-billing-01
-  provenance: { kind: hand-authored, author: Filip Stojanović }
+  provenance: { kind: hand-authored, author: Claude (Anthropic) }
   label: correct
   note: Correct, omitting the invoice number. Detail loss is not an error here.
   reference:
@@ -53,7 +64,7 @@
   candidate: A customer was billed twice in March and would like the duplicate charge looked into.
 
 - id: sem-good-terse-01
-  provenance: { kind: hand-authored, author: Filip Stojanović }
+  provenance: { kind: hand-authored, author: Claude (Anthropic) }
   label: correct
   note: >
     Aggressively short but not wrong. Included because a threshold tuned only on
@@ -63,7 +74,7 @@
   candidate: Damaged item, refund requested.
 
 - id: sem-wrong-fluent-action-01
-  provenance: { kind: hand-authored, author: Filip Stojanović }
+  provenance: { kind: hand-authored, author: Claude (Anthropic) }
   label: incorrect
   note: >
     THE FLUENT LIE. Same topic, same register, opposite fact — the customer
@@ -73,7 +84,7 @@
   candidate: "A customer received a broken ceramic mug in order #48812 and would like a replacement sent out."
 
 - id: sem-wrong-fluent-severity-01
-  provenance: { kind: hand-authored, author: Filip Stojanović }
+  provenance: { kind: hand-authored, author: Claude (Anthropic) }
   label: incorrect
   note: Fluent, on-topic, and wrong about the thing that decides the urgency field.
   reference:
@@ -81,7 +92,7 @@
   candidate: Northgate Retail reported some intermittent slowness on the checkout API and asked whether it is worth investigating at some point.
 
 - id: sem-wrong-fluent-entity-01
-  provenance: { kind: hand-authored, author: Filip Stojanović }
+  provenance: { kind: hand-authored, author: Claude (Anthropic) }
   label: incorrect
   note: >
     Right shape, wrong customer and wrong invoice. The kind of error that
@@ -91,7 +102,7 @@
   candidate: Tom Weller was charged twice for April against invoice NG-4410 and wants someone to check the duplicate charge.
 
 - id: sem-wrong-topic-01
-  provenance: { kind: hand-authored, author: Filip Stojanović }
+  provenance: { kind: hand-authored, author: Claude (Anthropic) }
   label: incorrect
   note: Different support topic entirely. The easy negative; included as an anchor.
   reference:
@@ -99,7 +110,7 @@
   candidate: The customer cannot log in and is asking for a password reset link.
 
 - id: sem-wrong-empty-ish-01
-  provenance: { kind: hand-authored, author: Filip Stojanović }
+  provenance: { kind: hand-authored, author: Claude (Anthropic) }
   label: incorrect
   note: >
     Says nothing. Included because a model that degrades to generic filler

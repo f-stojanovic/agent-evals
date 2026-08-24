@@ -15,6 +15,15 @@ Evidence: This repository, commit `12518c4`. That commit added
           The fix is verified by src/provenance.test.ts: a fixture with no
           provenance fails to load, and a hand-authored entry cannot name a
           model.
+          A SECOND INSTANCE, 2026-08-24, inside the mechanism itself. All eight
+          judge-calibration cases and all ten semantic pairs carried
+          `author: Filip Stojanović`. Every one of those outputs, rubrics and
+          reference texts was written by an assistant model. The field required
+          by this ADR, on the schema this ADR added, held a false attribution
+          for five days — and the calibration set is the one file in the
+          repository where authorship is the measurement rather than metadata.
+          Corrected to `author: Claude (Anthropic)` on both sets, with the
+          consequence recorded in ADR 021.
 
 ## Context
 
@@ -76,10 +85,19 @@ The claim is now checkable from the file, by a schema, on every load. It cannot
 drift from the truth without somebody typing a lie.
 
 It also becomes visible where it matters. The provenance of the calibration set
-is printed next to the MAE it produced — which makes plain that the measured
-0.031 is agreement between one judge and one annotator, on outputs that same
-annotator invented. That was always true and it was only ever stated in an
+is printed next to the MAE it produced — which makes plain that the figure is
+agreement between one judge and one annotator, on outputs that annotator did not
+capture from anywhere. That was always true and it was only ever stated in an
 Evidence line.
+
+The printed line was also, for five days, wrong in the one respect that
+mattered: it read `8 hand-authored by Filip Stojanović` when a model had written
+all eight. It now reads `8 hand-authored by Claude (Anthropic)`, which is
+accurate and which looks strange enough on the page to be worth leaving there —
+the `hand-authored` arm is carrying a meaning it was not designed for, and the
+type wants a third arm for text a model drafted as authoring assistance rather
+than produced as a subject under test. That is unbuilt, and named here so it is
+not mistaken for a considered shape.
 
 The costs:
 
@@ -91,6 +109,32 @@ and the failure it prevents cost a full audit pass to find.
 can still write `kind: 'recorded'` on invented data. This raises the cost of
 being wrong from "leave a comment unchecked" to "type a false statement into a
 required field", which is a real difference and not a guarantee.
+
+**And the guarantee was tested, and it did not hold.** Five days after this
+record was written, every calibration case in the repository — eighteen entries
+across two sets — named a person as the author of text a model had written. Not
+by anyone lying: the field was filled in by the same process that wrote the
+data, so the discriminant was chosen correctly (`hand-authored`, since nothing
+was captured from a run) and the `author` string was simply the name attached to
+the repository. The schema was satisfied at every step.
+
+The lesson is narrower than "typed fields do not work", which would be the wrong
+one to draw — the arm structure did its job, and no entry ever claimed to be
+`recorded` when it was not. What failed is the part with a free-form string in
+it. `kind` has two values and the schema can reason about both; `author` accepts
+any name and the schema can only check that it is non-empty. **A typed field
+protects the parts of a claim that are typed.** The only defence for the rest is
+somebody reading it who knows what happened, which is what eventually occurred
+here.
+
+This matters more than the fixture case that prompted the ADR. A fixture with a
+misattributed author is untidy. A *calibration* set with one is a measurement
+error, because in that file authorship is the thing being asserted: an MAE
+against labels means one thing if a person assigned them and another thing
+entirely if the system under test did. That distinction is now its own record,
+[ADR 021](021-only-a-human-may-assign-a-label.md), which this ADR could not have
+prevented — the false author was inside the field built to prevent false
+authors.
 
 **It made the underlying gap visible, and the gap was then closed separately.**
 When this was written the fixtures were hand-authored, so the per-push gate
