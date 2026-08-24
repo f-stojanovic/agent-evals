@@ -157,25 +157,25 @@ Verbatim, current subject, comparing against its own recorded baseline:
 ```
 # Eval run — live
 
-2026-08-20T16:55:40.004Z · 5 cases · 46.0s
+2026-08-24T14:27:27.795Z · 5 cases · 65.7s
 
 **GATE: PASS** — no regression against the baseline.
 
 | case                            | calls-tool | exact-fields | format-compliance | llm-judge | matches-schema | semantic-similarity | mean  | sd    | Δ vs baseline   | via       | cost    | ms    |
 | ------------------------------- | ---------- | ------------ | ----------------- | --------- | -------------- | ------------------- | ----- | ----- | --------------- | --------- | ------- | ----- |
-|    billing-question-schema-01   | —          | 1.00         | 1.00              | —         | 1.00           | 0.81                | 0.952 | 0.006 | -0.002 (±0.060) | tool-call | $0.0332 | 34469 |
-|    cancellation-or-complaint-01 | —          | 0.90         | 1.00              | 0.86      | —              | 0.74                | 0.875 | 0.046 | +0.005 (±0.121) | tool-call | $0.0872 | 45977 |
-|    no-tool-abuse-01             | 1.00       | 1.00         | 1.00              | —         | —              | 0.92                | 0.979 | 0.001 | +0.001 (±0.052) | tool-call | $0.0289 | 18586 |
-|    outage-escalation-01         | —          | 1.00         | 1.00              | —         | —              | 0.77                | 0.923 | 0.005 | +0.032 (±0.077) | tool-call | $0.0358 | 41901 |
-|    refund-damaged-item-01       | —          | 1.00         | 1.00              | —         | —              | 0.82                | 0.939 | 0.005 | +0.010 (±0.078) | tool-call | $0.0322 | 19526 |
+|    billing-question-schema-01   | —          | 0.90         | 1.00              | —         | 1.00           | 0.81                | 0.927 | 0.050 | -0.025 (±0.095) | tool-call | $0.0335 | 40531 |
+|    cancellation-or-complaint-01 | —          | 0.95         | 1.00              | 0.84      | —              | 0.75                | 0.886 | 0.049 | +0.011 (±0.111) | tool-call | $0.0883 | 65731 |
+|    no-tool-abuse-01             | 1.00       | 1.00         | 1.00              | —         | —              | 0.92                | 0.980 | 0.002 | +0.001 (±0.052) | tool-call | $0.0310 | 30484 |
+|    outage-escalation-01         | —          | 1.00         | 1.00              | —         | —              | 0.55                | 0.850 | 0.027 | -0.072 (±0.075) | tool-call | $0.0343 | 31609 |
+|    refund-damaged-item-01       | —          | 1.00         | 1.00              | —         | —              | 0.84                | 0.948 | 0.003 | +0.008 (±0.056) | tool-call | $0.0323 | 23310 |
 
 ## Totals
 
-- cases: 5 · below threshold: 2 of 5 · errored 0
-- weighted score: **0.932**
-- latency: p50 34469ms · p95 45977ms · max 45977ms
-- cost: **$0.2173** — subject $0.1630, judge $0.0543
-- tokens: 26575 in / 5549 out
+- cases: 5 · below threshold: 3 of 5 · errored 0
+- weighted score: **0.907**
+- latency: p50 31609ms · p95 65731ms · max 65731ms
+- cost: **$0.2195** — subject $0.1655, judge $0.0540
+- tokens: 26575 in / 5715 out
 
 ### Output format distribution
 
