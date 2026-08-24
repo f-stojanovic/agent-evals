@@ -3,6 +3,12 @@
 [![ci](https://github.com/f-stojanovic/agent-evals/actions/workflows/ci.yml/badge.svg)](https://github.com/f-stojanovic/agent-evals/actions/workflows/ci.yml)
 [![eval-live](https://github.com/f-stojanovic/agent-evals/actions/workflows/eval-live.yml/badge.svg)](https://github.com/f-stojanovic/agent-evals/actions/workflows/eval-live.yml)
 
+![GitHub Actions showing both workflows green: ci on the latest push and
+eval-live on a manual dispatch](docs/images/ci-both-workflows-green.png)
+
+*Both gates on `main`: the per-push fixture gate and the live run against real
+models. The live run grades with `claude-opus-5` and costs about $0.22.*
+
 An evaluation harness for LLM agents, in TypeScript. You describe cases in YAML
 — an input, the expectations, a stable id — point it at a subject (an API call,
 an agent loop, anything returning text and tool calls), and score the results
