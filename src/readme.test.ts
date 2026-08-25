@@ -67,7 +67,13 @@ describe('figures quoted in prose', () => {
     const guarded = Object.entries(figures.guarded);
     expectNonEmptyCorpus(guarded, 'no guarded figures declared in published-figures.json');
 
-    const outsideBlocks = stripGeneratedBlocks(readme);
+    /* A `±0.096` is a derived tolerance, never one of the three published
+       figures, and the two collide on digits sooner or later — the judge MAE
+       landed on 0.096 while the regression-demo transcript quoted a tolerance
+       of ±0.096. Dropping tolerances is narrower than exempting the whole
+       block: a hand-copied MAE sitting in that same transcript would still be
+       caught. */
+    const outsideBlocks = stripGeneratedBlocks(readme).replace(/±\s*\d+(\.\d+)?/g, '');
     const leaked = guarded
       .filter(([, value]) => outsideBlocks.includes(value))
       .map(([name, value]) => `${name} (${value}) appears in prose outside its generated block`);

@@ -12,7 +12,7 @@
 | [008](008-embeddings-run-locally.md) | Embeddings run locally | Accepted |
 | [009](009-model-revisions-are-locked.md) | Model revisions are locked | Accepted |
 | [010](010-uncalibrated-constants-are-counted.md) | Uncalibrated constants are counted, not hidden | Accepted |
-| [011](011-the-judge-is-calibrated-against-human-labels.md) | The judge is calibrated against human labels | Accepted — measured, MAE 0.102; the labels became human on 2026-08-24 (ADR 021) |
+| [011](011-the-judge-is-calibrated-against-human-labels.md) | The judge is calibrated against human labels | Accepted — measured, MAE 0.096; the labels became human on 2026-08-25 (ADR 021) |
 | [012](012-tolerance-is-derived-from-measured-variance.md) | The regression tolerance is derived from measured variance | Accepted |
 | [013](013-ci-splits-fixture-from-live.md) | CI is split between a fixture run and a live run | Accepted |
 | [014](014-judge-and-subject-sampling-are-not-multiplied.md) | Judge sampling and subject sampling are measured separately, not multiplied | Accepted — supersedes the `minSamples: 3` rule |
@@ -64,8 +64,8 @@ of why the two lines are separate. It was marked measured on 2026-08-19 with an
 MAE of 0.031, and both halves of that were in good faith and one of them was
 false: the eight labels it was measured against had been written by a model, not
 by a person, so the figure recorded consistency and was filed as accuracy. The
-labels became human on 2026-08-24 and the same judge on the same outputs
-measures 0.102 ([ADR 021](021-only-a-human-may-assign-a-label.md)). The Evidence
+labels became human on 2026-08-25 and the same judge on the same outputs
+measures 0.096 ([ADR 021](021-only-a-human-may-assign-a-label.md)). The Evidence
 line now carries the new number and withdraws the old one rather than quietly
 replacing it. Several other records are still unverified, and their Evidence
 lines say which.
@@ -85,7 +85,7 @@ actually asking when they open the file.
 
 The other reason is that this repository has already been wrong three times, on
 the record, and in different ways.
-[ADR 015](015-test-data-provenance-is-typed.md) is the sharper of the two: a doc
+[ADR 015](015-test-data-provenance-is-typed.md) is the sharpest of the three: a doc
 comment asserted the CI fixtures were captured from a real model when they had
 been written by hand in the same session, and it went unchallenged for three
 commits because nothing about a comment makes it checkable. The fix was not to

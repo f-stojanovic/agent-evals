@@ -14,10 +14,16 @@
 # of false attribution (ADR 015, ADR 021). The `provenance.author` now names the
 # actual writer.
 #
-# The `humanScore` labels ARE Filip Stojanović's, assigned 2026-08-24, replacing
-# the generated labels that preceded them. That replacement moved the measured
-# MAE from 0.031 to 0.102, which is the finding ADR 021 records: the earlier
-# number was agreement between a model and its own labels.
+# The `humanScore` labels ARE Filip Stojanović's, n=8, one annotator, assigned
+# 2026-08-25, replacing the generated labels that preceded them. Every case
+# carries `labelSource: human` so the claim is a field rather than a sentence in
+# this header, and a test fails if any case says otherwise (ADR 021).
+#
+# That replacement moved the measured MAE by roughly a factor of three. The
+# earlier figure was agreement between a model and its own answer key, on
+# outputs the same model had written, with two rubrics that stated the target
+# score outright — flattering in three separate ways at once, and published as
+# accuracy.
 #
 # `labelKind` separates two things an error against a label can mean:
 #   ground-truth — a competent annotator would land here; judge error is judge error
@@ -47,9 +53,11 @@
     note: >
       Output and rubric written by an assistant model to place this case at a
       chosen point on the score range. Not a person, and not captured from a
-      model run. The humanScore is Filip Stojanović's, assigned 2026-08-24.
+      model run. The humanScore beside it is NOT: that label is Filip
+      Stojanović's, assigned 2026-08-25 and recorded as `labelSource: human`.
   description: Unambiguous extraction, every field right. The judge should be near 1.
   labelKind: ground-truth
+  labelSource: human
   humanScore: 1.0
   humanReason: >
     Correct on all four fields, with nothing plausible-but-wrong anywhere in it.
@@ -75,15 +83,23 @@
     note: >
       Output and rubric written by an assistant model to place this case at a
       chosen point on the score range. Not a person, and not captured from a
-      model run. The humanScore is Filip Stojanović's, assigned 2026-08-24.
+      model run. The humanScore beside it is NOT: that label is Filip
+      Stojanović's, assigned 2026-08-25 and recorded as `labelSource: human`.
   description: Confidently wrong on every field. The judge should be near 0.
   labelKind: ground-truth
-  humanScore: 0.1
+  labelSource: human
+  humanScore: 0.0
   humanReason: >
-    0.1. Every field contradicts the email. The reasoning behind the exact value
-    rather than a flat 0 was not recorded, and is left thin here rather than
-    reconstructed — see ADR 021 on why a label is not improved by a
-    justification written after the fact.
+    The only correct thing about this output is that it is well-formed JSON, and
+    format has its own scorer — the same rule that puts cal-prose-not-json-01 at
+    0.9. Structure earns nothing here for the same reason its absence costs
+    nothing there.
+
+    Crediting it would also rank a confident fabrication above an honest
+    refusal: cal-refused-01 extracts nothing and says so, this extracts nothing
+    and hides it. That inverts the rule behind every other label in this set.
+
+    Moved from an earlier 0.1 for those two reasons.
   expect:
     rubric: >
       The output must be a JSON object extracting {intent, urgency, customer_name,
@@ -104,9 +120,11 @@
     note: >
       Output and rubric written by an assistant model to place this case at a
       chosen point on the score range. Not a person, and not captured from a
-      model run. The humanScore is Filip Stojanović's, assigned 2026-08-24.
+      model run. The humanScore beside it is NOT: that label is Filip
+      Stojanović's, assigned 2026-08-25 and recorded as `labelSource: human`.
   description: Three fields right, urgency overstated. Anchors the middle of the range.
   labelKind: ground-truth
+  labelSource: human
   humanScore: 0.6
   humanReason: >
     Deliberately below the arithmetic 0.75 that "one field of four" would give.
@@ -136,11 +154,13 @@
     note: >
       Output and rubric written by an assistant model to place this case at a
       chosen point on the score range. Not a person, and not captured from a
-      model run. The humanScore is Filip Stojanović's, assigned 2026-08-24.
+      model run. The humanScore beside it is NOT: that label is Filip
+      Stojanović's, assigned 2026-08-25 and recorded as `labelSource: human`.
   description: >
     Invents a first name the email never contained. Tests whether the judge
     penalises fabrication harder than omission, as the rubric demands.
   labelKind: ground-truth
+  labelSource: human
   humanScore: 0.25
   humanReason: >
     A fabricated name is the worst thing in this set. "Aleksandar Novak" reads
@@ -169,12 +189,14 @@
     note: >
       Output and rubric written by an assistant model to place this case at a
       chosen point on the score range. Not a person, and not captured from a
-      model run. The humanScore is Filip Stojanović's, assigned 2026-08-24.
+      model run. The humanScore beside it is NOT: that label is Filip
+      Stojanović's, assigned 2026-08-25 and recorded as `labelSource: human`.
   description: >
     THE HARD ONE. The ambiguous case from evals/cases — a venting customer who
     asks about cancellation terms without asking to cancel. Two competent
     annotators disagree, so a high judge spread here is correct behaviour.
   labelKind: contested
+  labelSource: human
   humanScore: 0.4
   humanReason: >
     Two of the four fields are the defensible reading rather than the right one,
@@ -211,12 +233,14 @@
     note: >
       Output and rubric written by an assistant model to place this case at a
       chosen point on the score range. Not a person, and not captured from a
-      model run. The humanScore is Filip Stojanović's, assigned 2026-08-24.
+      model run. The humanScore beside it is NOT: that label is Filip
+      Stojanović's, assigned 2026-08-25 and recorded as `labelSource: human`.
   description: >
     Correct understanding, delivered as prose rather than JSON. Tests that the
     judge grades the content it was asked about and leaves the envelope to the
     scorer that measures envelopes.
   labelKind: ground-truth
+  labelSource: human
   humanScore: 0.9
   humanReason: >
     The content is right: the refund request, the customer, the action and the
@@ -251,11 +275,13 @@
     note: >
       Output and rubric written by an assistant model to place this case at a
       chosen point on the score range. Not a person, and not captured from a
-      model run. The humanScore is Filip Stojanović's, assigned 2026-08-24.
+      model run. The humanScore beside it is NOT: that label is Filip
+      Stojanović's, assigned 2026-08-25 and recorded as `labelSource: human`.
   description: >
     Right answer delivered through a tool call rather than text. Checks that the
     judge does not penalise a compliant path it happens to see less often.
   labelKind: ground-truth
+  labelSource: human
   humanScore: 1.0
   humanReason: >
     Every field is correct and the tool is the intended path. Scoring this below
@@ -285,9 +311,11 @@
     note: >
       Output and rubric written by an assistant model to place this case at a
       chosen point on the score range. Not a person, and not captured from a
-      model run. The humanScore is Filip Stojanović's, assigned 2026-08-24.
+      model run. The humanScore beside it is NOT: that label is Filip
+      Stojanović's, assigned 2026-08-25 and recorded as `labelSource: human`.
   description: Model declined to answer. Should be near 0 without being treated as an error.
   labelKind: ground-truth
+  labelSource: human
   humanScore: 0.0
   humanReason: >
     A refusal extracts nothing, so there is nothing to award. It is a legitimate

@@ -31,6 +31,7 @@ const calibrationCase = (
   id,
   provenance: { kind: 'hand-authored', author: 'test' },
   labelKind,
+  labelSource: 'human',
   humanScore,
   expect: { rubric: 'anything' },
   output: subjectOutput({ text: 'output' }),
@@ -172,6 +173,28 @@ describe('loadCalibrationCases', () => {
     /* Recorded as the truth: these outputs were written by hand, so the MAE is
        agreement about invented outputs. ADR 015. */
     expect(cases.every((c) => c.provenance.kind === 'hand-authored')).toBe(true);
+  });
+
+  /**
+   * ADR 021, as a check rather than a sentence.
+   *
+   * A model may write the inputs, the outputs and the rubric. Only a human may
+   * assign the label. That held as prose for five days while every label in
+   * this file was generated, because prose is not checkable and
+   * `provenance.author` describes the output rather than the score. Two fields,
+   * two claims, and this one has a test.
+   */
+  it('requires every label to have been assigned by a human', async () => {
+    const dir = fileURLToPath(new URL('../evals/calibration', import.meta.url));
+
+    const cases = await loadCalibrationCases(dir);
+    if (cases.length === 0) {
+      throw new Error('This check inspected nothing: no calibration cases loaded.');
+    }
+
+    const generated = cases.filter((c) => c.labelSource !== 'human').map((c) => c.id);
+
+    expect(generated).toEqual([]);
   });
 
   /**

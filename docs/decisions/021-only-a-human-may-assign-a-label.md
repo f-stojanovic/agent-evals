@@ -1,7 +1,8 @@
 # 021. A model may write the inputs and the outputs; only a human may assign the label
 
 Date: 2026-08-24
-Status: Accepted. Enforced for `evals/calibration/` as of 2026-08-24. NOT yet
+Status: Accepted. Enforced for `evals/calibration/` as of 2026-08-25, by a
+required `labelSource` field and a test, not by convention. NOT yet
 satisfied by `evals/calibration-semantic/`, whose ten labels are still
 generated and are queued for human review.
 Evidence: MEASURED, 2026-08-24, by replacing the labels and re-running nothing
@@ -20,6 +21,18 @@ Evidence: MEASURED, 2026-08-24, by replacing the labels and re-running nothing
           The arithmetic reconciles completely: new labels against the OLD judge
           scores give 0.169, and the three rubric-driven moves account for the
           difference between that and the measured 0.102.
+          THE LABEL SET WAS FINALISED 2026-08-25 and the current figure is
+          0.096, 0.043 over the seven ground-truth cases. One label moved:
+          cal-clear-wrong-01 from 0.1 to 0.0, on the grounds that the only
+          correct thing about that output is that it is well-formed JSON, which
+          `formatCompliance` already measures — and that crediting it would rank
+          a confident fabrication above the honest refusal sitting at 0.0. The
+          0.102 above is the figure as first measured and is left standing
+          because the 0.031 → 0.102 comparison is what this record is about;
+          0.096 is the figure a reader should quote.
+          `labelSource` is now a required field and src/calibrate.test.ts fails
+          if any case declares anything but `human`, so this ADR is enforced
+          rather than described.
 
 ## Context
 
@@ -77,11 +90,20 @@ only slower. The label is different in kind: it is the only element that is not
 under test, and the moment it comes from the same class of system as the thing
 it grades, the measurement folds in on itself and reports agreement as accuracy.
 
-Three rules follow.
+Four rules follow.
 
 **`provenance.author` names who wrote the text, not who owns the file.** Where
 an assistant model wrote an output, the author is that model. The `note` records
 that the label was assigned separately and by whom.
+
+**`labelSource` names who assigned the score, and it is a separate field.** Who
+wrote the output and who labelled it are two claims about two acts, and folding
+them into one `provenance` block is what let a model-written label sit under a
+person's name for five days. `human` and `generated` are the two values, both
+required, and `src/calibrate.test.ts` fails if any committed case declares
+anything but `human`. `generated` exists so an outgoing set can say so out loud
+rather than be deleted — `evals/calibration-semantic-labels.yaml` still carries
+it on all ten pairs.
 
 **A rubric states rules, never targets.** "Deduct roughly 0.25 per wrong field"
 constrains the judge's arithmetic and applies to any output a subject could
@@ -99,8 +121,8 @@ headline MAE over everything, and the MAE over ground-truth cases only.
 
 ## Consequences
 
-**The judge's measured error tripled and the number is now worth reading.** 0.102
-overall, 0.050 over the seven ground-truth cases. Both are still a usable
+**The judge's measured error tripled and the number is now worth reading.** 0.096
+overall, 0.043 over the seven ground-truth cases. Both are still a usable
 instrument by the standard ADR 011 set, so nothing downstream changes — but the
 figure now describes the judge rather than describing the calibration set's
 authorship.
@@ -133,7 +155,7 @@ advertising and better engineering than quietly relabelling them in the same
 pass that discovered the problem — the labels have to come from a person, and a
 person has not looked at them yet.
 
-**Every calibration figure this repository has published before 2026-08-24 is
+**Every calibration figure this repository has published before 2026-08-25 is
 withdrawn, not corrected.** The 0.031 was not a measurement that has since
 improved. It was a different quantity wearing the same name.
 

@@ -41,18 +41,6 @@ import type { Provenance, ProvenanceSummary } from './provenance.js';
 import type { EvalCase, Scorer, SubjectOutput, Usage } from './types.js';
 
 /**
- * A case whose correct score is already known, because a human assigned it.
- *
- * The FIXED `output` is the whole point: calibration must run the judge against
- * an output that does not move, not against a fresh generation. If the subject
- * were re-run, a changed score could mean the judge drifted or the subject did,
- * and the measurement would be uninterpretable.
- *
- * Fixed is not the same as captured. `provenance` says which — every case here
- * is currently hand-authored, which means the MAE measures the judge against a
- * human's labels on a human's invented outputs. See ADR 015.
- */
-/**
  * Whether an error against this label means anything about the judge.
  *
  * `ground-truth` — a competent annotator would land on this label, so distance
@@ -67,11 +55,46 @@ import type { EvalCase, Scorer, SubjectOutput, Usage } from './types.js';
  */
 export type LabelKind = 'ground-truth' | 'contested';
 
+/**
+ * Who assigned the label — the one field ADR 021 turns on.
+ *
+ * The outputs and rubrics in `evals/calibration/` were written by a model, and
+ * `provenance.author` says so. The LABELS are a separate claim about a separate
+ * act, and for the first five days of this file's life the two were conflated:
+ * every case named a person as author and nothing anywhere recorded that the
+ * scores beside them had been generated. The measured MAE was published as
+ * accuracy when it was a model agreeing with its own answer key.
+ *
+ * So authorship of the text and authorship of the label are two fields, and
+ * `src/calibrate.test.ts` requires every committed case to declare `human`.
+ * `generated` exists so an outgoing set can be honest rather than deleted —
+ * `evals/calibration-semantic-labels.yaml` still carries it.
+ */
+export type LabelSource = 'human' | 'generated';
+
+/**
+ * A case whose correct score is already known, because a human assigned it.
+ *
+ * The FIXED `output` is the whole point: calibration must run the judge against
+ * an output that does not move, not against a fresh generation. If the subject
+ * were re-run, a changed score could mean the judge drifted or the subject did,
+ * and the measurement would be uninterpretable.
+ *
+ * Fixed is not the same as captured, and neither is the same as labelled.
+ * `provenance` records who wrote the OUTPUT — a model, for every case here, so
+ * the judge is measured on invented material (ADR 015). `labelSource` records
+ * who assigned the SCORE, which is the claim that has to hold for the number to
+ * mean anything (ADR 021). They are separate fields because they were once one
+ * assumption, and it was wrong.
+ */
 export type CalibrationCase = {
   id: string;
+  /** Who wrote the output and rubric. NOT who assigned the label. */
   provenance: Provenance;
   description?: string;
   labelKind: LabelKind;
+  /** Who assigned {@link CalibrationCase.humanScore}. See {@link LabelSource}. */
+  labelSource: LabelSource;
   /** The human's score, 0..1. The reference the judge is measured against. */
   humanScore: number;
   /** Why the human scored it that way. Not shown to the judge — it is the
@@ -96,6 +119,7 @@ const calibrationCaseSchema = z.strictObject({
   provenance: provenanceSchema,
   description: z.string().optional(),
   labelKind: z.enum(['ground-truth', 'contested']),
+  labelSource: z.enum(['human', 'generated']),
   humanScore: z.number().min(0).max(1),
   humanReason: z.string().optional(),
   expect: z.record(z.string(), z.unknown()),
@@ -137,6 +161,7 @@ export async function loadCalibrationCases(dir: string): Promise<CalibrationCase
         id: parsed.id,
         provenance: toProvenance(parsed.provenance),
         labelKind: parsed.labelKind,
+        labelSource: parsed.labelSource,
         humanScore: parsed.humanScore,
         expect: parsed.expect,
         output: {

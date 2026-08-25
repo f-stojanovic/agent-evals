@@ -4,10 +4,13 @@ Date: 2026-08-19
 Status: Accepted, and now measured against labels a human actually assigned.
 Its sampling guidance is superseded by 014: judge k defaults to 1, not 3. The
 label-authorship requirement it assumed but did not state is now ADR 021.
-Evidence: MEASURED, 2026-08-24, against Filip Stojanović's labels: mean
-          absolute error 0.102 over n=8, 0.050 over the seven cases that have a
-          ground truth, mean signed error +0.077 — the judge is the more
-          generous of the two.
+Evidence: MEASURED, 2026-08-25, against Filip Stojanović's labels — n=8, one
+          annotator, one pass: mean absolute error 0.096, 0.043 over the seven
+          cases that have a ground truth, mean signed error +0.084 — the judge
+          is the more generous of the two.
+          Every label declares `labelSource: human` and src/calibrate.test.ts
+          fails if any does not, so the claim this Evidence line rests on is
+          checked on every push rather than asserted here.
           THE EARLIER FIGURE IS WITHDRAWN, not superseded. This record
           previously read "MEASURED, 2026-08-19 … mean absolute error 0.031",
           and that number was agreement between the judge and eight labels a

@@ -484,24 +484,29 @@ So `evals/calibration/` holds cases with human-assigned scores spanning the
 range, each paired with a frozen output. `npm run calibrate` reports mean
 absolute and mean signed error against those labels.
 
-**The labels were replaced on 2026-08-24 and the measured error roughly
-tripled.** Until then they had been written by a model — the same class of
-system the judge is, grading outputs and rubrics that model had also written —
-and the number that came out was published as accuracy when it was consistency.
-Two of the rubrics made it worse by stating the target outright: one ended
-*"score it around 0.3 … not higher"* and the judge returned 0.30, an error of
-exactly zero on a case that measured nothing but instruction-following. With the
-target deleted and the rubric rewritten to grade content rather than format, the
-same judge on the same output returns 1.00.
+**The labels are Filip Stojanović's, assigned 2026-08-25: n=8, one annotator,
+one pass.** They replaced generated ones, and the measured error roughly
+tripled.
 
-The labels are now Filip Stojanović's, the rubrics state rules and never
-targets, and each label declares whether the case has a ground truth at all —
-one of the eight does not, and it is reported separately rather than averaged in
+The earlier figure was flattering in three separate ways at once. The labels had
+been written by a model — the same class of system the judge is — so the number
+measured two similar systems agreeing rather than a judge being accurate. The
+outputs and rubrics they graded came from that same model. And two of the
+rubrics stated the target outright: one ended *"score it around 0.3 … not
+higher"* and the judge returned 0.30, an error of exactly zero on a case that
+measured nothing but instruction-following. With the target deleted and the
+rubric rewritten to grade content rather than format, the same judge on the same
+output returns 1.00.
+
+The rubrics now state rules and never targets. Every label records who assigned
+it in a typed field the build checks, rather than in a sentence. And each
+declares whether the case has a ground truth at all — one of the eight does not,
+and it is reported separately rather than averaged in
 ([ADR 021](docs/decisions/021-only-a-human-may-assign-a-label.md)).
 
 <!-- generated:judge-calibration -->
 
-**Measured: MAE 0.102 over n=8**, mean signed error +0.077. Over the 7 cases that have a ground truth it is 0.050; the remainder are contested labels, where no right answer exists and judge error is disagreement rather than inaccuracy. The labels are one pass by one human annotator. The outputs and rubrics they grade were written by a model (ADR 021).
+**Measured: MAE 0.096 over n=8**, mean signed error +0.084. Over the 7 cases that have a ground truth it is 0.043; the remainder are contested labels, where no right answer exists and judge error is disagreement rather than inaccuracy. The labels are one pass by one human annotator. The outputs and rubrics they grade were written by a model (ADR 021).
 
 <!-- /generated:judge-calibration -->
 
@@ -606,13 +611,14 @@ are in [`docs/decisions/`](docs/decisions/).
 
 Everything here is true as of the last live run. None of it is hypothetical.
 
-**The calibration labels are one annotator over eight cases.** They are one
-person's judgement, assigned in one pass and not reviewed by a second reader.
-One of the eight is marked `contested` — a case with no right answer, where the
-judge sits well above the human and that distance is the ambiguity being
-reported rather than an error to close.
+**The calibration labels are one annotator over eight cases.** Filip
+Stojanović's, assigned 2026-08-25 in a single pass and not reviewed by a second
+reader. One of the eight is marked `contested` — a case with no right answer,
+where the judge sits well above the human and that distance is the ambiguity
+being reported rather than an error to close. What would count as progress here
+is a second annotator, and more than eight cases.
 
-**The judge's calibration figures published before 2026-08-24 were wrong in
+**The judge's calibration figures published before 2026-08-25 were wrong in
 kind, not in value.** They measured a model against labels a model had written.
 Every earlier MAE quoted anywhere in this repository is withdrawn
 ([ADR 021](docs/decisions/021-only-a-human-may-assign-a-label.md)).
