@@ -581,6 +581,18 @@ export type CaseResult = {
    * and similar stddev, and only the raw draws tell them apart.
    */
   sampleValues: number[];
+  /**
+   * Per-scorer population standard deviation across samples, keyed by scorer
+   * name. Undefined when `samples === 1`, for the same reason
+   * {@link CaseResult.stdDev} is.
+   *
+   * This exists because {@link CaseResult.stdDev} describes the spread of the
+   * case MEAN, and the mean is an average over scorers. A scorer that moved
+   * while the others held still is invisible in it — which is exactly the
+   * regression the per-scorer screen is for, and it needs a per-scorer noise
+   * estimate to set an allowance from. See ADR 022.
+   */
+  scorerStdDev?: Record<string, number>;
   /** Wall clock for the whole case, including scoring — which is why this is
    *  not simply {@link SubjectOutput.latencyMs}. */
   latencyMs: number;

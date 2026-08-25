@@ -23,6 +23,7 @@
 | [019](019-the-scorer-follows-the-field-type.md) | The scorer follows the field type | Accepted |
 | [020](020-readme-figures-are-generated.md) | README figures are generated, not transcribed | Accepted |
 | [021](021-only-a-human-may-assign-a-label.md) | A model may write the inputs and the outputs; only a human may assign the label | Accepted — the semantic pairs are knowingly still in breach |
+| [022](022-a-gate-must-not-screen-on-a-summary.md) | A case mean is a summary, and a gate must not screen on a summary | Accepted — baseline v3; the miss and the catch are both measured |
 
 ## Two axes: Status and Evidence
 

@@ -1,6 +1,6 @@
 {
-  "version": 2,
-  "recordedAt": "2026-08-20T17:10:29.310Z",
+  "version": 3,
+  "recordedAt": "2026-08-25T08:09:09.986Z",
   "models": {
     "judge": {
       "modelId": "fixture-judge",
@@ -22,10 +22,22 @@
       "stdDev": 0,
       "n": 5,
       "scorers": {
-        "exact-fields": 1,
-        "matches-schema": 1,
-        "semantic-similarity": 0.774015,
-        "format-compliance": 1
+        "exact-fields": {
+          "mean": 1,
+          "stdDev": 0
+        },
+        "matches-schema": {
+          "mean": 1,
+          "stdDev": 0
+        },
+        "semantic-similarity": {
+          "mean": 0.774015,
+          "stdDev": 0
+        },
+        "format-compliance": {
+          "mean": 1,
+          "stdDev": 0
+        }
       }
     },
     "cancellation-or-complaint-01": {
@@ -33,10 +45,22 @@
       "stdDev": 0,
       "n": 5,
       "scorers": {
-        "exact-fields": 1,
-        "semantic-similarity": 0.689315,
-        "format-compliance": 1,
-        "llm-judge": 0.85
+        "exact-fields": {
+          "mean": 1,
+          "stdDev": 0
+        },
+        "semantic-similarity": {
+          "mean": 0.689315,
+          "stdDev": 0
+        },
+        "format-compliance": {
+          "mean": 1,
+          "stdDev": 0
+        },
+        "llm-judge": {
+          "mean": 0.85,
+          "stdDev": 0
+        }
       }
     },
     "no-tool-abuse-01": {
@@ -44,10 +68,22 @@
       "stdDev": 0,
       "n": 5,
       "scorers": {
-        "exact-fields": 1,
-        "calls-tool": 1,
-        "semantic-similarity": 0.919593,
-        "format-compliance": 1
+        "exact-fields": {
+          "mean": 1,
+          "stdDev": 0
+        },
+        "calls-tool": {
+          "mean": 1,
+          "stdDev": 0
+        },
+        "semantic-similarity": {
+          "mean": 0.919593,
+          "stdDev": 0
+        },
+        "format-compliance": {
+          "mean": 1,
+          "stdDev": 0
+        }
       }
     },
     "outage-escalation-01": {
@@ -55,9 +91,18 @@
       "stdDev": 0,
       "n": 5,
       "scorers": {
-        "exact-fields": 1,
-        "semantic-similarity": 0.50563,
-        "format-compliance": 1
+        "exact-fields": {
+          "mean": 1,
+          "stdDev": 0
+        },
+        "semantic-similarity": {
+          "mean": 0.50563,
+          "stdDev": 0
+        },
+        "format-compliance": {
+          "mean": 1,
+          "stdDev": 0
+        }
       }
     },
     "refund-damaged-item-01": {
@@ -65,9 +110,18 @@
       "stdDev": 0,
       "n": 5,
       "scorers": {
-        "exact-fields": 1,
-        "semantic-similarity": 0.844712,
-        "format-compliance": 1
+        "exact-fields": {
+          "mean": 1,
+          "stdDev": 0
+        },
+        "semantic-similarity": {
+          "mean": 0.844712,
+          "stdDev": 0
+        },
+        "format-compliance": {
+          "mean": 1,
+          "stdDev": 0
+        }
       }
     }
   },

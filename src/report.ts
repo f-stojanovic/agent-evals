@@ -97,11 +97,19 @@ export function formatReport({ run, comparison, models, provenance }: ReportInpu
     lines.push(
       '## Regressions',
       '',
-      ...comparison.regressions.map(
-        (c) =>
-          `- **${c.caseId}** ${c.baselineMean?.toFixed(3)} → ${c.currentMean.toFixed(3)} ` +
+      ...comparison.regressions.flatMap((c) => [
+        `- **${c.caseId}** ${c.baselineMean?.toFixed(3)} → ${c.currentMean.toFixed(3)} ` +
           `(${signed(c.delta ?? 0)}, tolerance ±${(c.tolerance ?? 0).toFixed(3)})`,
-      ),
+        /* Named individually. A case flagged only by the per-scorer screen has
+           a case mean sitting comfortably inside tolerance, so printing the
+           mean alone would read as a gate firing on a number that did not
+           move — which is how a correct failure gets dismissed as a flake. */
+        ...(c.scorerRegressions ?? []).map(
+          (s) =>
+            `  - \`${s.scorer}\` ${s.baselineMean.toFixed(3)} → ${s.currentMean.toFixed(3)} ` +
+            `(${signed(s.delta)}, tolerance ±${s.tolerance.toFixed(3)}) — this scorer alone`,
+        ),
+      ]),
       '',
     );
   }
@@ -194,8 +202,17 @@ function gateVerdict(comparison: BaselineComparison): string {
 
   const reasons: string[] = [];
   if (comparison.regressions.length > 0) {
+    /* Distinguished on the verdict line, because the two look completely
+       different in the table: a mean regression shows a number that visibly
+       moved, a scorer-only one shows a case sitting inside its tolerance. A
+       reader who is not told which they are looking at concludes the gate
+       misfired. */
+    const scorerOnly = comparison.regressions.filter(
+      (c) => (c.scorerRegressions?.length ?? 0) > 0 && !((c.delta ?? 0) < -(c.tolerance ?? 0)),
+    ).length;
     reasons.push(
-      `${comparison.regressions.length} regression${comparison.regressions.length === 1 ? '' : 's'}`,
+      `${comparison.regressions.length} regression${comparison.regressions.length === 1 ? '' : 's'}` +
+        (scorerOnly > 0 ? ` (${scorerOnly} in a single scorer, with the case mean inside tolerance)` : ''),
     );
   }
   if (comparison.erroredCases.length > 0) reasons.push(`${comparison.erroredCases.length} errored`);

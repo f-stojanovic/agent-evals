@@ -21,8 +21,16 @@ export const BASELINE_PATH = 'evals/baseline.json';
  * not because the means are wrong, but because the run cannot tell whether
  * they were produced by the same scorers, which is the whole point of
  * recording them.
+ *
+ * v3 gave each scorer a spread alongside its mean. A v2 file records the
+ * per-scorer means but nothing about how far they move on their own, so a v2
+ * file can be screened at the case level and NOT at the scorer level — which
+ * is precisely the screen that exists to catch what the case level missed.
+ * Rather than run the new gate at half strength against old files and report
+ * a pass that covered less than it appeared to, a v2 file is refused. See
+ * ADR 022.
  */
-export const BASELINE_VERSION = 2;
+export const BASELINE_VERSION = 3;
 
 /**
  * What a baseline records, and nothing else.
@@ -40,13 +48,28 @@ export class BaselineVersionError extends Error {
   override readonly name = 'BaselineVersionError';
 }
 
+/**
+ * One scorer's contribution to a case, as the baseline records it.
+ *
+ * v3 replaced a bare number with this. The number was always recorded and
+ * never compared, which is how a regression confined to one scorer passed the
+ * gate: `exact-fields` fell 1.00 → 0.75 on a case whose mean moved 0.077
+ * against a tolerance of 0.087. The mean is a summary, and a screen on a
+ * summary cannot see a change inside it. See ADR 022.
+ */
+export type BaselineScorer = {
+  mean: number;
+  /** Absent when n === 1, and for the same reason as {@link BaselineCase}. */
+  stdDev?: number;
+};
+
 export type BaselineCase = {
   mean: number;
   /** Absent when n === 1: spread is not meaningful for a single draw, and 0
    *  would claim stability the run never demonstrated. */
   stdDev?: number;
   n: number;
-  scorers: Record<string, number>;
+  scorers: Record<string, BaselineScorer>;
 };
 
 export type Baseline = {
@@ -86,7 +109,10 @@ const baselineSchema = z.strictObject({
       mean: z.number(),
       stdDev: z.number().optional(),
       n: z.number().int().positive(),
-      scorers: z.record(z.string(), z.number()),
+      scorers: z.record(
+        z.string(),
+        z.strictObject({ mean: z.number(), stdDev: z.number().optional() }),
+      ),
     }),
   ),
   totals: z.strictObject({ cases: z.number().int(), weightedScore: z.number() }),
@@ -125,7 +151,15 @@ export function baselineFrom(
       ...(caseResult.stdDev !== undefined && { stdDev: round(caseResult.stdDev) }),
       n: caseResult.samples,
       scorers: Object.fromEntries(
-        caseResult.scores.map((score) => [score.scorer, round(score.value)]),
+        caseResult.scores.map((score) => [
+          score.scorer,
+          {
+            mean: round(score.value),
+            ...(caseResult.scorerStdDev?.[score.scorer] !== undefined && {
+              stdDev: round(caseResult.scorerStdDev[score.scorer] as number),
+            }),
+          },
+        ]),
       ),
     };
   }
@@ -168,9 +202,11 @@ export async function readBaseline(path = BASELINE_PATH): Promise<Baseline | und
   if (typeof version === 'number' && version !== BASELINE_VERSION) {
     throw new BaselineVersionError(
       `${path} was recorded in baseline format v${version}; this build writes ` +
-        `v${BASELINE_VERSION}. The formats differ in what identity they record ` +
-        `alongside the means — v2 added the scorer set — so a v${version} file cannot ` +
-        `say whether its numbers came from the same scorers this run used. ` +
+        `v${BASELINE_VERSION}. The formats differ in what they record alongside ` +
+        `the means — v2 added the scorer set, v3 added a spread for each scorer — ` +
+        `so a v${version} file cannot support the checks this run performs: whether ` +
+        `its numbers came from the same scorers, and whether any single scorer ` +
+        `regressed. ` +
         `Re-record it: npm run eval -- --update-baseline`,
     );
   }
@@ -194,7 +230,19 @@ export async function readBaseline(path = BASELINE_PATH): Promise<Baseline | und
         {
           mean: entry.mean,
           n: entry.n,
-          scorers: entry.scorers,
+          /* Rebuilt key-by-key so an absent stdDev stays absent rather than
+             becoming present-and-undefined, which `exactOptionalPropertyTypes`
+             treats as a different type — the same conversion the case and
+             fixture loaders perform. */
+          scorers: Object.fromEntries(
+            Object.entries(entry.scorers).map(([name, scorer]) => [
+              name,
+              {
+                mean: scorer.mean,
+                ...(scorer.stdDev !== undefined && { stdDev: scorer.stdDev }),
+              },
+            ]),
+          ),
           ...(entry.stdDev !== undefined && { stdDev: entry.stdDev }),
         },
       ]),
@@ -214,6 +262,24 @@ export type CaseComparison = {
   delta?: number;
   /** The derived allowance for this case on this run. */
   tolerance?: number;
+  /**
+   * Scorers that regressed on their own, whatever the case mean did.
+   *
+   * Empty on a healthy case, and empty is the normal state — this is populated
+   * only when a scorer moved further than its own allowance. A case can appear
+   * here with `status: 'unchanged'`: that combination is the entire reason the
+   * field exists, and it is what a single-field regression looks like once the
+   * mean has averaged it away with two scorers that did not move.
+   */
+  scorerRegressions?: ScorerRegression[];
+};
+
+export type ScorerRegression = {
+  scorer: string;
+  baselineMean: number;
+  currentMean: number;
+  delta: number;
+  tolerance: number;
 };
 
 export type BaselineComparison = {
@@ -240,6 +306,8 @@ export type CompareOptions = {
   /** Absolute allowance added to the derived one, so a case whose samples all
    *  landed on exactly the same value does not fail on floating-point dust. */
   readonly floor?: number;
+  /** The same, for the per-scorer screen. See {@link DEFAULT_SCORER_FLOOR}. */
+  readonly scorerFloor?: number;
 };
 
 /** How many standard errors of extra allowance a noisy case earns. */
@@ -255,6 +323,34 @@ export const DEFAULT_Z = 2;
  */
 export const DEFAULT_FLOOR = 0.05;
 
+/**
+ * The same allowance, for a single scorer rather than a case mean.
+ *
+ * IT IS A GUESS AND IT IS DECLARED AS ONE. Nothing measured says 0.10 is the
+ * right number. What can be said is why it is not 0.05 and not 0.15.
+ *
+ * A case mean divides each scorer's contribution by the number of scorers that
+ * ran — three on the case this screen was built for. So the case-level floor
+ * of 0.05 demands a per-scorer drop of about 0.15 before it will look at
+ * anything, and a screen that only fires above 0.15 per scorer would add
+ * nothing the case screen does not already have. The new screen has to be
+ * meaningfully tighter than that or it is decoration.
+ *
+ * The other end is quantisation. `exactFields` on a four-field case moves in
+ * steps of 0.25 per sample, so at n=5 its mean moves in steps of 0.05. A floor
+ * at 0.05 would fire on one field wrong in one sample out of five, which at
+ * these sample counts is as likely to be the model being stochastic as
+ * anything having regressed — the cheap direction to be wrong in is the other
+ * one.
+ *
+ * 0.10 sits between them: half the case screen's effective per-scorer
+ * sensitivity, twice the smallest move a deterministic scorer can make. Both
+ * bounds are arguments about arithmetic rather than measurements of anything,
+ * which is why this is reported in the uncalibrated list with the other
+ * guesses. `z·se` still widens it for a scorer that has earned the room.
+ */
+export const DEFAULT_SCORER_FLOOR = 0.1;
+
 /** Declared so the report can count them. They are guesses (ADR 010): 2 and
  *  0.05 are conventions, not measurements. */
 export function screenConstants(options: CompareOptions = {}): UncalibratedConstant[] {
@@ -268,6 +364,19 @@ export function screenConstants(options: CompareOptions = {}): UncalibratedConst
               'absolute score drop tolerated before a case is flagged. The primary ' +
               'allowance in the screen, and a convention — nothing measured says a ' +
               '0.05 drop is acceptable and 0.06 is not.',
+          },
+        ]
+      : []),
+    ...(options.scorerFloor === undefined
+      ? [
+          {
+            id: 'baseline.scorerFloor',
+            value: DEFAULT_SCORER_FLOOR,
+            note:
+              'absolute drop tolerated in a SINGLE scorer before it is flagged, ' +
+              'independently of the case mean. Bounded by argument rather than ' +
+              'measurement: below ~0.15 or it adds nothing the case screen has, ' +
+              'above 0.05 or it fires on one field in one sample of five.',
           },
         ]
       : []),
@@ -347,6 +456,7 @@ export function compareToBaseline(
 ): BaselineComparison {
   const z = options.z ?? DEFAULT_Z;
   const floor = options.floor ?? DEFAULT_FLOOR;
+  const scorerFloor = options.scorerFloor ?? DEFAULT_SCORER_FLOOR;
 
   const erroredCases = result.results.filter((r) => r.status === 'errored').map((r) => r.caseId);
 
@@ -428,8 +538,19 @@ export function compareToBaseline(
     /* Floor first: it is the term doing most of the deciding. */
     const tolerance = floor + z * standardError(recorded, caseResult);
     const delta = caseResult.value - recorded.mean;
-    const status =
+    const meanStatus =
       delta < -tolerance ? 'regressed' : delta > tolerance ? 'improved' : 'unchanged';
+
+    /* The second screen, on the parts rather than the summary. A case mean
+       averages its scorers, so a drop confined to one of them arrives here
+       already divided by the number that ran. See ADR 022. */
+    const scorerRegressions = screenScorers(recorded, caseResult, scorerFloor, z);
+
+    /* A scorer regression is a regression, even where the mean is unchanged or
+       improved — the improvement can be another scorer moving the other way,
+       and reporting the case as green because two numbers cancelled is the
+       failure this screen was added for. */
+    const status = scorerRegressions.length > 0 ? 'regressed' : meanStatus;
 
     const comparison: CaseComparison = {
       caseId: caseResult.caseId,
@@ -438,6 +559,7 @@ export function compareToBaseline(
       baselineMean: recorded.mean,
       delta,
       tolerance,
+      ...(scorerRegressions.length > 0 && { scorerRegressions }),
     };
     comparisons.push(comparison);
     if (status === 'regressed') regressions.push(comparison);
@@ -496,6 +618,50 @@ function compareScorerSets(recorded: readonly string[], current: readonly string
       `moves every case at once without anything getting worse. Re-record the ` +
       `baseline in the same commit as the scorer change.`,
   ];
+}
+
+/**
+ * The per-scorer screen.
+ *
+ * Same shape as the case screen — `floor + z·se`, a drop below it is a
+ * regression — applied to each scorer's own mean and its own spread.
+ *
+ * A scorer the baseline does not record is skipped rather than treated as new
+ * or missing: the scorer SET is compared separately and a difference there
+ * already makes every number incomparable, so reaching this code with an
+ * unrecognised scorer means the sets matched and this case simply did not run
+ * it. Flagging that would report a regression on a case where nothing changed.
+ */
+function screenScorers(
+  recorded: BaselineCase,
+  current: CaseResult,
+  floor: number,
+  z: number,
+): ScorerRegression[] {
+  const regressions: ScorerRegression[] = [];
+
+  for (const score of current.scores) {
+    const before = recorded.scorers[score.scorer];
+    if (before === undefined) continue;
+
+    const baselineVariance = (before.stdDev ?? 0) ** 2 / Math.max(1, recorded.n);
+    const currentVariance =
+      (current.scorerStdDev?.[score.scorer] ?? 0) ** 2 / Math.max(1, current.samples);
+    const tolerance = floor + z * Math.sqrt(baselineVariance + currentVariance);
+    const delta = score.value - before.mean;
+
+    if (delta < -tolerance) {
+      regressions.push({
+        scorer: score.scorer,
+        baselineMean: before.mean,
+        currentMean: score.value,
+        delta,
+        tolerance,
+      });
+    }
+  }
+
+  return regressions.sort((a, b) => a.delta - b.delta);
 }
 
 /** Standard error of the difference of two means. */

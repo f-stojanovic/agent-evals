@@ -1,6 +1,6 @@
 {
-  "version": 2,
-  "recordedAt": "2026-08-24T14:27:27.795Z",
+  "version": 3,
+  "recordedAt": "2026-08-25T08:09:20.450Z",
   "models": {
     "judge": {
       "modelId": "claude-opus-5",
@@ -18,61 +18,115 @@
   ],
   "cases": {
     "billing-question-schema-01": {
-      "mean": 0.927463,
-      "stdDev": 0.050446,
+      "mean": 0.940532,
+      "stdDev": 0.032121,
       "n": 5,
       "scorers": {
-        "exact-fields": 0.9,
-        "matches-schema": 1,
-        "semantic-similarity": 0.809852,
-        "format-compliance": 1
+        "exact-fields": {
+          "mean": 0.95,
+          "stdDev": 0.1
+        },
+        "matches-schema": {
+          "mean": 1,
+          "stdDev": 0
+        },
+        "semantic-similarity": {
+          "mean": 0.812126,
+          "stdDev": 0.04091
+        },
+        "format-compliance": {
+          "mean": 1,
+          "stdDev": 0
+        }
       }
     },
     "cancellation-or-complaint-01": {
-      "mean": 0.885515,
-      "stdDev": 0.049438,
+      "mean": 0.871744,
+      "stdDev": 0.053343,
       "n": 5,
       "scorers": {
-        "exact-fields": 0.95,
-        "semantic-similarity": 0.752058,
-        "format-compliance": 1,
-        "llm-judge": 0.84
+        "exact-fields": {
+          "mean": 0.95,
+          "stdDev": 0.1
+        },
+        "semantic-similarity": {
+          "mean": 0.666976,
+          "stdDev": 0.091713
+        },
+        "format-compliance": {
+          "mean": 1,
+          "stdDev": 0
+        },
+        "llm-judge": {
+          "mean": 0.87,
+          "stdDev": 0.04
+        }
       }
     },
     "no-tool-abuse-01": {
-      "mean": 0.980107,
-      "stdDev": 0.002316,
+      "mean": 0.980384,
+      "stdDev": 0.000862,
       "n": 5,
       "scorers": {
-        "exact-fields": 1,
-        "calls-tool": 1,
-        "semantic-similarity": 0.920428,
-        "format-compliance": 1
+        "exact-fields": {
+          "mean": 1,
+          "stdDev": 0
+        },
+        "calls-tool": {
+          "mean": 1,
+          "stdDev": 0
+        },
+        "semantic-similarity": {
+          "mean": 0.921536,
+          "stdDev": 0.003448
+        },
+        "format-compliance": {
+          "mean": 1,
+          "stdDev": 0
+        }
       }
     },
     "outage-escalation-01": {
-      "mean": 0.850447,
-      "stdDev": 0.027443,
+      "mean": 0.87044,
+      "stdDev": 0.032353,
       "n": 5,
       "scorers": {
-        "exact-fields": 1,
-        "semantic-similarity": 0.55134,
-        "format-compliance": 1
+        "exact-fields": {
+          "mean": 1,
+          "stdDev": 0
+        },
+        "semantic-similarity": {
+          "mean": 0.611319,
+          "stdDev": 0.09706
+        },
+        "format-compliance": {
+          "mean": 1,
+          "stdDev": 0
+        }
       }
     },
     "refund-damaged-item-01": {
-      "mean": 0.947602,
-      "stdDev": 0.003473,
+      "mean": 0.945772,
+      "stdDev": 0.007021,
       "n": 5,
       "scorers": {
-        "exact-fields": 1,
-        "semantic-similarity": 0.842805,
-        "format-compliance": 1
+        "exact-fields": {
+          "mean": 1,
+          "stdDev": 0
+        },
+        "semantic-similarity": {
+          "mean": 0.837315,
+          "stdDev": 0.021064
+        },
+        "format-compliance": {
+          "mean": 1,
+          "stdDev": 0
+        }
       }
     }
   },
   "totals": {
     "cases": 5,
-    "weightedScore": 0.90693
+    "weightedScore": 0.913218
   }
 }

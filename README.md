@@ -163,25 +163,25 @@ Verbatim, current subject, comparing against its own recorded baseline:
 ```
 # Eval run — live
 
-2026-08-24T15:28:52.768Z · 5 cases · 44.2s
+2026-08-25T08:11:49.004Z · 5 cases · 51.9s
 
 **GATE: PASS** — no regression against the baseline.
 
 | case                            | calls-tool | exact-fields | format-compliance | llm-judge | matches-schema | semantic-similarity | mean  | sd    | Δ vs baseline   | via       | cost    | ms    |
 | ------------------------------- | ---------- | ------------ | ----------------- | --------- | -------------- | ------------------- | ----- | ----- | --------------- | --------- | ------- | ----- |
-|    billing-question-schema-01   | —          | 1.00         | 1.00              | —         | 1.00           | 0.78                | 0.945 | 0.007 | +0.018 (±0.096) | tool-call | $0.0319 | 21358 |
-|    cancellation-or-complaint-01 | —          | 0.95         | 1.00              | 0.88      | —              | 0.79                | 0.905 | 0.013 | +0.020 (±0.096) | tool-call | $0.0874 | 44168 |
-|    no-tool-abuse-01             | 1.00       | 1.00         | 1.00              | —         | —              | 0.92                | 0.980 | 0.001 | -0.000 (±0.052) | tool-call | $0.0287 | 15514 |
-|    outage-escalation-01         | —          | 1.00         | 1.00              | —         | —              | 0.63                | 0.877 | 0.032 | +0.026 (±0.088) | tool-call | $0.0343 | 19627 |
-|    refund-damaged-item-01       | —          | 1.00         | 1.00              | —         | —              | 0.83                | 0.943 | 0.004 | -0.004 (±0.055) | tool-call | $0.0322 | 23240 |
+|    billing-question-schema-01   | —          | 1.00         | 1.00              | —         | 1.00           | 0.81                | 0.951 | 0.007 | +0.011 (±0.079) | tool-call | $0.0323 | 24900 |
+|    cancellation-or-complaint-01 | —          | 0.90         | 1.00              | 0.77      | —              | 0.71                | 0.844 | 0.094 | -0.028 (±0.147) | tool-call | $0.0885 | 51906 |
+|    no-tool-abuse-01             | 1.00       | 1.00         | 1.00              | —         | —              | 0.91                | 0.978 | 0.002 | -0.003 (±0.052) | tool-call | $0.0286 | 16764 |
+|    outage-escalation-01         | —          | 1.00         | 1.00              | —         | —              | 0.57                | 0.857 | 0.031 | -0.014 (±0.090) | tool-call | $0.0346 | 29726 |
+|    refund-damaged-item-01       | —          | 1.00         | 1.00              | —         | —              | 0.81                | 0.935 | 0.012 | -0.011 (±0.062) | tool-call | $0.0325 | 23009 |
 
 ## Totals
 
-- cases: 5 · below threshold: 2 of 5 · errored 0
-- weighted score: **0.921**
-- latency: p50 21358ms · p95 44168ms · max 44168ms
-- cost: **$0.2145** — subject $0.1596, judge $0.0549
-- tokens: 26575 in / 5323 out
+- cases: 5 · below threshold: 3 of 5 · errored 0
+- weighted score: **0.904**
+- latency: p50 24900ms · p95 51906ms · max 51906ms
+- cost: **$0.2166** — subject $0.1615, judge $0.0552
+- tokens: 26575 in / 5450 out
 
 ### Output format distribution
 
@@ -197,10 +197,11 @@ Verbatim, current subject, comparing against its own recorded baseline:
 
 ### Assumptions
 
-This run used 4 uncalibrated constants:
+This run used 5 uncalibrated constants:
   llm-judge.threshold = 0.7 — median judge score at or above which a case passes. A guess; the continuous value is recorded so it can be revisited against history.
   semantic-similarity.threshold = 0.8 — raw cosine above which a response counts as matching. A guess: the right cutoff depends on the encoder and the domain. Calibrate it against labelled pairs the way src/calibrate.ts calibrates the judge.
   baseline.floor = 0.05 — absolute score drop tolerated before a case is flagged. The primary allowance in the screen, and a convention — nothing measured says a 0.05 drop is acceptable and 0.06 is not.
+  baseline.scorerFloor = 0.1 — absolute drop tolerated in a SINGLE scorer before it is flagged, independently of the case mean. Bounded by argument rather than measurement: below ~0.15 or it adds nothing the case screen has, above 0.05 or it fires on one field in one sample of five.
   baseline.z = 2 — standard errors of extra allowance granted to a noisy case. Borrowed from a normal approximation that the underlying data does not satisfy at n=5; treat it as a widening factor, not a confidence level.
 ```
 
@@ -365,6 +366,62 @@ the parts that are categorical, a schema on the shape, a judge with a rubric tha
 names the facts that matter. On the example suite, `exact-fields` scoring 1.00 on
 the enums is what makes the 0.54 semantic score on the same case readable as
 "different wording" rather than "possibly fabricated".
+
+## The regression that got through, and the screen that was added
+
+The defect is the one people actually make. Someone tidies an enum and drops a
+value that looks redundant — `critical` from the subject's `urgency` set, one
+line. The schema stays valid. Typecheck stays clean. All 281 tests pass. The
+model, no longer permitted to say `critical`, returns `high` on the case whose
+email describes a production outage losing £4k an hour.
+
+`exact-fields` on that case fell **1.00 → 0.75**, five samples out of five. Here
+is what the gate said:
+
+```
+**GATE: PASS** — no regression against the baseline.
+
+| case                    | exact-fields | format-compliance | semantic-similarity | mean  | sd    | Δ vs baseline   |
+| outage-escalation-01    | 0.75         | 1.00              | 0.57                | 0.774 | 0.031 | -0.077 (±0.087) |
+```
+
+It cleared by 0.010, and not by bad luck. The case is graded by three scorers and
+averaged, so one wrong field of four arrives at the comparison as
+`0.25 / 3 = 0.0833` — the **maximum** a single-field regression can move that
+mean, against a tolerance of 0.087. No single-field regression on that case was
+detectable at all, whatever the field.
+
+The per-scorer numbers were in the baseline the whole time. `{"exact-fields": 1,
+"semantic-similarity": 0.55134, "format-compliance": 1}` had been recorded since
+v2 and nothing ever compared them. Everything needed to catch it was committed,
+in the diff, and unused.
+
+So the gate now screens the parts as well as the summary — same rule,
+`floor + z·se`, applied per scorer, with each scorer's own spread recorded
+alongside its mean. The identical defect, re-run against the identical suite:
+
+```
+**GATE: FAIL** — 1 regression (1 in a single scorer, with the case mean inside tolerance).
+
+| case                    | exact-fields | format-compliance | semantic-similarity | mean  | sd    | Δ vs baseline   |
+| 🔴 outage-escalation-01 | 0.75         | 1.00              | 0.62                | 0.791 | 0.040 | -0.080 (±0.096) |
+
+## Regressions
+
+- **outage-escalation-01** 0.870 → 0.791 (-0.080, tolerance ±0.096)
+  - `exact-fields` 1.000 → 0.750 (-0.250, tolerance ±0.100) — this scorer alone
+```
+
+The case mean is still inside its tolerance and is still correctly reported as
+such. The scorer is not. The enum was restored, verified byte-identical, and the
+next run passed.
+
+Two things this does not claim. The floor of 0.10 is a guess — bounded by
+argument, reported in the uncalibrated list with the others, and explained in
+[ADR 022](docs/decisions/022-a-gate-must-not-screen-on-a-summary.md). And it
+catches the concentrated case, not the diffuse one: six scorers each dropping
+0.09 would still pass both screens. That is the case the mean was always good
+at, and the two are complementary rather than one replacing the other.
 
 ## An eval that measures nothing must not report green
 
@@ -586,10 +643,19 @@ confidence interval, and there is no correction for screening every case at
 once. It is better than one fixed tolerance for the whole suite and it is not
 statistics.
 
-**No regression caused by an actual change has ever been caught.** The gate has
-been seen to fail correctly against a deliberately stale baseline and to pass
-correctly against a fresh one. Nobody has yet changed a prompt and watched it
-catch the consequence.
+**The regression screen is weakest exactly where the scorer is noisiest.** On
+the one case whose score leans on `semantic-similarity`, three consecutive runs
+of the same subject scored 0.77, 0.55 and 0.61 — a spread wider than most
+regressions worth catching. The derived tolerance widens to match, which is
+correct and also means the gate is close to blind on that case. A quieter
+scorer, or more samples, would buy back the sensitivity.
+
+Those three figures are anchored, not retyped: `evals/baseline.semantic-spread-high.json`
+and `evals/baseline.semantic-spread-low.json` are committed archives of the
+first two runs, the third is the current `evals/baseline.json`, and a test fails
+if the prose and the files disagree. The current baseline also records the
+within-run spread on that scorer directly — stdDev 0.097, against 0.000 for
+`exact-fields` on the same case.
 
 ## Development
 

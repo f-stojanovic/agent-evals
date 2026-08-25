@@ -68,7 +68,7 @@ a format the case author declares instead of awarding a made-up 0.5 for a fence.
 ## Consequences
 
 Assumptions are counted rather than absorbed. A report that ends with "this run
-used 4 uncalibrated constants" tells a reader how much of the number in front of
+used 5 uncalibrated constants" tells a reader how much of the number in front of
 them is convention.
 
 Raw cosine is harder to read than a rescaled score — unrelated sentences sit near
@@ -95,7 +95,7 @@ somebody guessed, so both are read as measured.
 the guess to the caller and makes the tool unusable out of the box, without making
 anybody's number better informed.
 
-**A comment next to each constant.** Comments do not aggregate. Four `// this is a
+**A comment next to each constant.** Comments do not aggregate. Five `// this is a
 guess` comments scattered across two files never become the sentence "this run
-used 4 uncalibrated constants" at the bottom of a report a human is already
+used 5 uncalibrated constants" at the bottom of a report a human is already
 reading.

@@ -88,8 +88,30 @@ describe('figures quoted in prose', () => {
  * So each historical figure names a file that holds it. If somebody edits the
  * prose figure, or replaces an archive, this fails.
  */
+type ArchivedBaseline = {
+  totals: { weightedScore: number };
+  cases: Record<string, { scorers: Record<string, number | { mean: number }> }>;
+};
+
+/** Pulls one scorer's mean out of an archive, across the v2 and v3 shapes. */
+const scorerMean =
+  (caseId: string, scorer: string) =>
+  (archive: ArchivedBaseline): number => {
+    const entry = archive.cases[caseId]?.scorers[scorer];
+    if (entry === undefined) throw new Error(`no ${scorer} on ${caseId}`);
+    return typeof entry === 'number' ? entry : entry.mean;
+  };
+
 describe('historical figures', () => {
-  const anchors: { figure: string; file: string; describes: string }[] = [
+  const anchors: {
+    figure: string;
+    file: string;
+    describes: string;
+    /** Where in the archive the figure lives. Suite totals by default; the
+     *  semantic-spread figures are per-scorer values on a single case. */
+    read?: (archive: ArchivedBaseline) => number;
+    decimals?: number;
+  }[] = [
     {
       figure: '0.751',
       file: 'evals/baseline.freetext.json',
@@ -100,6 +122,27 @@ describe('historical figures', () => {
       file: 'evals/baseline.enums-prescorer.json',
       describes: 'the post-enum baseline, before the scorer set was recorded or expanded',
     },
+    {
+      figure: '0.77',
+      file: 'evals/baseline.semantic-spread-high.json',
+      describes: 'the high end of the semantic-similarity spread on outage-escalation-01',
+      read: scorerMean('outage-escalation-01', 'semantic-similarity'),
+      decimals: 2,
+    },
+    {
+      figure: '0.55',
+      file: 'evals/baseline.semantic-spread-low.json',
+      describes: 'the low end of the semantic-similarity spread on outage-escalation-01',
+      read: scorerMean('outage-escalation-01', 'semantic-similarity'),
+      decimals: 2,
+    },
+    {
+      figure: '0.61',
+      file: 'evals/baseline.json',
+      describes: 'the current semantic-similarity mean on outage-escalation-01',
+      read: scorerMean('outage-escalation-01', 'semantic-similarity'),
+      decimals: 2,
+    },
   ];
 
   it('every historical figure matches the archive that holds it', async () => {
@@ -107,10 +150,11 @@ describe('historical figures', () => {
 
     const mismatches: string[] = [];
     for (const anchor of anchors) {
-      const archived = JSON.parse(await readFile(join(ROOT, anchor.file), 'utf8')) as {
-        totals: { weightedScore: number };
-      };
-      const actual = archived.totals.weightedScore.toFixed(3);
+      const archived = JSON.parse(
+        await readFile(join(ROOT, anchor.file), 'utf8'),
+      ) as ArchivedBaseline;
+      const value = (anchor.read ?? ((a: ArchivedBaseline) => a.totals.weightedScore))(archived);
+      const actual = value.toFixed(anchor.decimals ?? 3);
       if (actual !== anchor.figure) {
         mismatches.push(
           `${anchor.file} holds ${actual}, but the README quotes ${anchor.figure} for ${anchor.describes}`,
@@ -129,8 +173,17 @@ describe('historical figures', () => {
     expectNonEmptyCorpus([before], 'the Before/After section is missing');
 
     /* Confined to the one section that is about history. A historical number
-       appearing in Known limitations is how contradiction 3 happened. */
-    const strays = anchors
+       appearing in Known limitations is how contradiction 3 happened.
+       Only the two suite-total figures are confined this way. The
+       semantic-spread figures are deliberately IN Known limitations — that is
+       the claim they support — and they are two-decimal values like 0.77 that
+       occur legitimately in generated tables, so confining them by substring
+       would fail on the blocks rather than on any drift. They are anchored to
+       their archives by the test above, which is the guarantee that matters. */
+    const confined = anchors.filter(({ read }) => read === undefined);
+    expectNonEmptyCorpus(confined, 'no suite-total historical figures declared');
+
+    const strays = confined
       .filter(({ figure }) => {
         const elsewhere = readme.split(before).join('');
         return elsewhere.includes(figure);

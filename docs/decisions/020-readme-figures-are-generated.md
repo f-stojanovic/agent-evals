@@ -63,6 +63,17 @@ Four checks enforce it:
 `npm run readme:refresh --check` fails when the committed figures no longer
 match the current artifacts, which is the form CI can run after an eval.
 
+**The figures come from the LATEST live run, not from the run the baseline was
+recorded from.** Both are real runs and either could be published, so this is a
+choice rather than a consequence, and it was made without being written down —
+which is how it came to be re-litigated. Settled: the latest run. A
+baseline-recording run has nothing to compare against, so its deltas are all
+zero and its gate verdict is vacuous; publishing it would show a table whose
+most interesting column is empty. The latest run shows the gate doing the thing
+the README is about. It also means the published weighted score will not equal
+the one in `evals/baseline.json`, and that difference is the point rather than a
+defect: it is one draw against a recorded one.
+
 ## Consequences
 
 A figure cannot be stale and unnoticed. If a run changes it, either the README

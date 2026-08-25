@@ -275,8 +275,170 @@ describe('compareToBaseline', () => {
   });
 });
 
+/**
+ * The per-scorer screen, and the regression that motivated it.
+ *
+ * ADR 022. A case mean averages its scorers, so a drop confined to one arrives
+ * at the case screen already divided by the number that ran. The numbers below
+ * are the real ones from 2026-08-24: `critical` was removed from the subject's
+ * urgency enum, `exactFields` on outage-escalation-01 fell 1.00 → 0.75, and the
+ * case mean moved 0.850 → 0.774 against a tolerance of 0.087. It passed.
+ */
+describe('the per-scorer screen', () => {
+  const outageBaseline: Baseline = {
+    version: 3,
+    recordedAt: '2026-08-24T14:27:27.795Z',
+    models: MODELS,
+    scorers: ['exact-fields', 'format-compliance', 'semantic-similarity'],
+    cases: {
+      'outage-escalation-01': {
+        mean: 0.850447,
+        stdDev: 0.027443,
+        n: 5,
+        scorers: {
+          'exact-fields': { mean: 1, stdDev: 0 },
+          'semantic-similarity': { mean: 0.55134, stdDev: 0.008 },
+          'format-compliance': { mean: 1, stdDev: 0 },
+        },
+      },
+    },
+    totals: { cases: 1, weightedScore: 0.850447 },
+  };
+
+  const withEnumDefect = suite([
+    caseResult({
+      caseId: 'outage-escalation-01',
+      value: 0.7733,
+      stdDev: 0.031,
+      samples: 5,
+      sampleValues: [0.77, 0.77, 0.78, 0.77, 0.77],
+      scores: [
+        { scorer: 'exact-fields', value: 0.75, passed: false },
+        { scorer: 'semantic-similarity', value: 0.57, passed: false },
+        { scorer: 'format-compliance', value: 1, passed: true },
+      ],
+      scorerStdDev: { 'exact-fields': 0, 'semantic-similarity': 0.01, 'format-compliance': 0 },
+    }),
+  ]);
+
+  it('catches the single-field regression the case mean averaged away', () => {
+    const comparison = compareToBaseline(withEnumDefect, outageBaseline, MODELS, outageBaseline.scorers);
+
+    expect(comparison.ok).toBe(false);
+    const [regressed] = comparison.regressions;
+    expect(regressed?.caseId).toBe('outage-escalation-01');
+    expect(regressed?.scorerRegressions?.map((s) => s.scorer)).toEqual(['exact-fields']);
+  });
+
+  it('flags it even though the case mean is inside its own tolerance', () => {
+    const comparison = compareToBaseline(withEnumDefect, outageBaseline, MODELS, outageBaseline.scorers);
+    const [regressed] = comparison.regressions;
+
+    /* The whole point. 0.0771 against 0.087 — the case screen looked at this
+       and said "unchanged", correctly by its own rule. One wrong field of four
+       is 0.25 on one scorer and 0.25/3 = 0.083 on the mean, so on this case NO
+       single-field regression is detectable at the case level at all. */
+    expect(Math.abs(regressed?.delta ?? 0)).toBeLessThan(regressed?.tolerance ?? 0);
+    expect(regressed?.scorerRegressions?.[0]?.delta).toBeCloseTo(-0.25, 3);
+  });
+
+  it('leaves a healthy run alone', () => {
+    const healthy = suite([
+      caseResult({
+        caseId: 'outage-escalation-01',
+        value: 0.86,
+        stdDev: 0.028,
+        samples: 5,
+        scores: [
+          { scorer: 'exact-fields', value: 1, passed: true },
+          { scorer: 'semantic-similarity', value: 0.58, passed: true },
+          { scorer: 'format-compliance', value: 1, passed: true },
+        ],
+        scorerStdDev: { 'exact-fields': 0, 'semantic-similarity': 0.012, 'format-compliance': 0 },
+      }),
+    ]);
+
+    const comparison = compareToBaseline(healthy, outageBaseline, MODELS, outageBaseline.scorers);
+
+    expect(comparison.ok).toBe(true);
+    expect(comparison.regressions).toEqual([]);
+  });
+
+  it('does not let two scorers moving opposite ways cancel out', () => {
+    /* The case mean is unchanged because one scorer rose as far as another
+       fell. Reporting that as green is the same defect as the miss above,
+       wearing a different disguise. */
+    const cancelling = suite([
+      caseResult({
+        caseId: 'outage-escalation-01',
+        value: 0.850447,
+        stdDev: 0.03,
+        samples: 5,
+        scores: [
+          { scorer: 'exact-fields', value: 0.75, passed: false },
+          { scorer: 'semantic-similarity', value: 0.8, passed: true },
+          { scorer: 'format-compliance', value: 1, passed: true },
+        ],
+        scorerStdDev: { 'exact-fields': 0, 'semantic-similarity': 0.01, 'format-compliance': 0 },
+      }),
+    ]);
+
+    const comparison = compareToBaseline(cancelling, outageBaseline, MODELS, outageBaseline.scorers);
+
+    expect(comparison.ok).toBe(false);
+    expect(comparison.regressions[0]?.delta).toBeCloseTo(0, 3);
+    expect(comparison.regressions[0]?.scorerRegressions?.[0]?.scorer).toBe('exact-fields');
+  });
+
+  it('grants a noisy scorer more room than a deterministic one', () => {
+    /* Same 0.12 drop on two scorers. `exact-fields` never moves, so it gets the
+       floor and nothing else and is flagged. `semantic-similarity` has a
+       measured spread, earns z·se on top, and is not. That asymmetry is the
+       reason the spread is recorded rather than one flat allowance used. */
+    const noisyBaseline: Baseline = {
+      ...outageBaseline,
+      cases: {
+        'outage-escalation-01': {
+          ...outageBaseline.cases['outage-escalation-01']!,
+          scorers: {
+            'exact-fields': { mean: 1, stdDev: 0 },
+            'semantic-similarity': { mean: 0.7, stdDev: 0.15 },
+            'format-compliance': { mean: 1, stdDev: 0 },
+          },
+        },
+      },
+    };
+
+    const dropped = suite([
+      caseResult({
+        caseId: 'outage-escalation-01',
+        value: 0.8,
+        stdDev: 0.03,
+        samples: 5,
+        scores: [
+          { scorer: 'exact-fields', value: 0.88, passed: false },
+          { scorer: 'semantic-similarity', value: 0.58, passed: false },
+          { scorer: 'format-compliance', value: 1, passed: true },
+        ],
+        scorerStdDev: { 'exact-fields': 0, 'semantic-similarity': 0.15, 'format-compliance': 0 },
+      }),
+    ]);
+
+    const flagged = compareToBaseline(dropped, noisyBaseline, MODELS, noisyBaseline.scorers)
+      .regressions[0]?.scorerRegressions?.map((s) => s.scorer);
+
+    expect(flagged).toEqual(['exact-fields']);
+  });
+
+  it('declares its floor as a guess, like every other constant in the screen', () => {
+    const comparison = compareToBaseline(withEnumDefect, outageBaseline, MODELS, outageBaseline.scorers);
+
+    expect(comparison.uncalibrated.map((c) => c.id)).toContain('baseline.scorerFloor');
+  });
+});
+
 describe('baselineFrom', () => {
-  it('records only mean, stdDev, n and per-scorer means', () => {
+  it('records only mean, stdDev, n and per-scorer mean and spread', () => {
     const result = suite([
       caseResult({
         caseId: 'c',
@@ -285,6 +447,7 @@ describe('baselineFrom', () => {
         samples: 3,
         sampleValues: [0.6, 0.8, 0.85],
         scores: [{ scorer: 'exact-fields', value: 0.75, passed: false }],
+        scorerStdDev: { 'exact-fields': 0.02 },
         output: { raw: { secret: 'customer email' }, model: 'm', usage: { inputTokens: 1, outputTokens: 1 }, latencyMs: 1 },
       }),
     ]);
@@ -293,11 +456,15 @@ describe('baselineFrom', () => {
 
     /* Sorted, so registration order cannot produce a spurious diff. */
     expect(recorded.scorers).toEqual(['a-scorer', 'b-scorer']);
+    /* v3: each scorer carries its own spread as well as its own mean. The
+       mean alone was recorded from v2 and never compared, which is how a
+       single-scorer regression passed the gate (ADR 022). A spread is what
+       lets it be screened rather than merely stored. */
     expect(recorded.cases['c']).toEqual({
       mean: 0.75,
       stdDev: 0.1,
       n: 3,
-      scorers: { 'exact-fields': 0.75 },
+      scorers: { 'exact-fields': { mean: 0.75, stdDev: 0.02 } },
     });
     /* No raw output, no per-sample values, no transcripts (ADR 003). */
     expect(JSON.stringify(recorded)).not.toContain('customer email');

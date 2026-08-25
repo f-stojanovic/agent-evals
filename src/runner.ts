@@ -288,6 +288,7 @@ async function runCase(args: CaseArgs): Promise<CaseResult> {
     value,
     samples: sampleValues.length,
     ...(sampleValues.length > 1 && { stdDev: populationStdDev(sampleValues) }),
+    ...(sampleValues.length > 1 && { scorerStdDev: scorerSpread(scoresBySample) }),
     sampleValues,
     latencyMs,
     usage,
@@ -550,6 +551,27 @@ function summarise(args: {
 function aggregate(scores: readonly Score[]): number {
   if (scores.length === 0) return 1;
   return mean(scores.map((s) => s.value));
+}
+
+/**
+ * Per-scorer spread across samples, keyed by scorer name.
+ *
+ * The companion to {@link meanScores}: that reduces each scorer's samples to a
+ * mean, this records how far apart they were. Without it the per-scorer screen
+ * would have a baseline value and no notion of how much that value moves on
+ * its own, and would have to fall back on one fixed allowance for a
+ * deterministic scorer and a noisy one alike. See ADR 022.
+ */
+function scorerSpread(scoresBySample: readonly Score[][]): Record<string, number> {
+  const first = scoresBySample[0];
+  if (first === undefined) return {};
+
+  const spread: Record<string, number> = {};
+  first.forEach((template, index) => {
+    const across = scoresBySample.map((scores) => scores[index]).filter(isScore);
+    spread[template.scorer] = populationStdDev(across.map((s) => s.value));
+  });
+  return spread;
 }
 
 /** Per-scorer mean across samples, so the reported column is the same kind of
