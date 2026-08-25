@@ -633,6 +633,13 @@ judge set got: they were written by a model and no human has reviewed them, so
 the separation figure is a model agreeing with itself and is knowingly in breach
 of [ADR 021](docs/decisions/021-only-a-human-may-assign-a-label.md).
 
+**The scheduled run would sample less than the run that recorded the baseline.**
+`eval-live.yml` defaults to `--samples 3`; the committed baseline was recorded
+at n=5. Nothing breaks — the tolerance takes both sample counts and widens
+accordingly — but it means the weekly gate is systematically less sensitive than
+the run it compares against, and no run has yet exercised that combination
+because the schedule has never fired.
+
 **The judge model pin is weak.** `claude-opus-5` is a moving target on the
 provider's side: the same id can be served by a different build than last month,
 and nothing local detects that. The lockfile catches somebody changing the id.
