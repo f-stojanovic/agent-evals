@@ -1,3 +1,5 @@
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
@@ -31,6 +33,7 @@ const pair = (
 ): SemanticPair => ({
   id,
   label,
+  labelSource: 'human',
   candidate,
   reference: [reference],
   provenance: { kind: 'hand-authored', author: 'test' },
@@ -87,6 +90,7 @@ describe('calibrateSemantic', () => {
         {
           id: 'multi',
           label: 'correct',
+          labelSource: 'human',
           candidate: 'candidate',
           /* Far reference first, so a min or a first-wins implementation
              would score 0 here instead of 1. */
@@ -152,10 +156,65 @@ describe('the committed calibration set', () => {
     const dir = fileURLToPath(new URL('../evals/calibration-semantic', import.meta.url));
 
     const pairs = await loadSemanticPairs(dir);
-    const fluentLies = pairs.filter((p) => p.label === 'incorrect' && p.id.includes('fluent'));
+    const fluentLies = pairs.filter((p) => p.label === 'incorrect' && p.negativeKind === 'fluent');
 
     /* A calibration set whose negatives are all gibberish reports a flattering
-       separation and says nothing about the failure that matters. */
+       separation and says nothing about the failure that matters.
+       This used to filter on `p.id.includes('fluent')`, which worked only
+       because the ids leaked their own labels. It is now a recorded field on
+       the label, because the property is not recoverable from the text:
+       lexical overlap puts the fluent-severity pair at 0.128, BELOW the
+       off-topic pair at 0.167. Its fluency is semantic. */
     expect(fluentLies.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('keeps the answer key out of the file an annotator reads', async () => {
+    const file = fileURLToPath(
+      new URL('../evals/calibration-semantic/summary-pairs.yaml', import.meta.url),
+    );
+    const text = await readFile(file, 'utf8');
+
+    /* The whole point of the split. A label, or an id or note that states one,
+       sitting beside the texts means whoever is asked to label the set is
+       reading the answer. See ADR 021. */
+    const leaks = [
+      ...[...text.matchAll(/^\s*label:/gm)].map(() => 'a `label:` key'),
+      ...[...text.matchAll(/\bsem-(good|wrong)-/g)].map((m) => `a self-describing id (${m[0]})`),
+    ];
+
+    expect([...new Set(leaks)]).toEqual([]);
+  });
+
+  it('refuses a pair with no label, and a label with no pair', async () => {
+    const dir = fileURLToPath(new URL('../evals/calibration-semantic', import.meta.url));
+    const labels = fileURLToPath(
+      new URL('../evals/calibration-semantic-labels.yaml', import.meta.url),
+    );
+
+    /* Splitting the files bought secrecy from the annotator at the cost of the
+       guarantee that a label exists at all. The join has to replace it, in
+       both directions: an unlabelled pair would be carried through measuring
+       nothing, and an orphaned label means a rename went half done — or a row
+       was deleted, which is the cheapest way to drop an inconvenient pair. */
+    const { mkdtemp, writeFile: write, readFile: read } = await import('node:fs/promises');
+    const { tmpdir } = await import('node:os');
+    const scratch = await mkdtemp(join(tmpdir(), 'sem-'));
+    const pairsYaml = await read(join(dir, 'summary-pairs.yaml'), 'utf8');
+
+    await write(
+      join(scratch, 'pairs.yaml'),
+      `${pairsYaml}\n- id: sem-pXX\n  provenance: { kind: hand-authored, author: test }\n  reference: ["a"]\n  candidate: "b"\n`,
+    );
+    await expect(loadSemanticPairs(scratch, labels)).rejects.toThrow(/sem-pXX.*has no label/s);
+
+    /* Cut the last pair out entirely rather than renaming it: a rename leaves
+       an unlabelled pair, which trips the first guard and never reaches this
+       one. Anchored on `- id:` so it cannot match the prose in the header. */
+    const withoutLast = pairsYaml.slice(0, pairsYaml.lastIndexOf('- id: sem-p10'));
+    expect(withoutLast).not.toEqual(pairsYaml); // the cut actually cut something
+    await write(join(scratch, 'pairs.yaml'), withoutLast);
+    await expect(loadSemanticPairs(scratch, labels)).rejects.toThrow(
+      /labels with no matching pair: sem-p10/,
+    );
   });
 });

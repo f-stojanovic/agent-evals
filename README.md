@@ -289,32 +289,32 @@ make easier to separate.
 ```
 Semantic threshold calibration
 
-  pair                          label      cosine
-  ----------------------------  ---------  ------
-  sem-wrong-fluent-action-01    incorrect  0.898
-  sem-good-refund-01            correct    0.808
-  sem-wrong-fluent-severity-01  incorrect  0.708
-  sem-good-cancellation-01      correct    0.700
-  sem-good-billing-01           correct    0.678
-  sem-wrong-fluent-entity-01    incorrect  0.668
-  sem-good-outage-01            correct    0.566
-  sem-good-terse-01             correct    0.506
-  sem-wrong-empty-ish-01        incorrect  0.300
-  sem-wrong-topic-01            incorrect  0.292
+  pair     label      cosine
+  -------  ---------  ------
+  sem-p02  incorrect  0.898
+  sem-p01  correct    0.808
+  sem-p03  incorrect  0.708
+  sem-p04  correct    0.700
+  sem-p08  correct    0.678
+  sem-p07  incorrect  0.668
+  sem-p05  correct    0.566
+  sem-p09  correct    0.506
+  sem-p06  incorrect  0.300
+  sem-p10  incorrect  0.292
 
   lowest correct   : 0.506
   highest incorrect: 0.898
   margin           : -0.392
 
   DOES NOT SEPARATE. 8 pair(s) sit in the overlap:
-    sem-good-billing-01 (correct) at 0.678
-    sem-good-cancellation-01 (correct) at 0.700
-    sem-good-outage-01 (correct) at 0.566
-    sem-good-refund-01 (correct) at 0.808
-    sem-good-terse-01 (correct) at 0.506
-    sem-wrong-fluent-action-01 (incorrect) at 0.898
-    sem-wrong-fluent-entity-01 (incorrect) at 0.668
-    sem-wrong-fluent-severity-01 (incorrect) at 0.708
+    sem-p01 (correct) at 0.808
+    sem-p02 (incorrect) at 0.898
+    sem-p03 (incorrect) at 0.708
+    sem-p04 (correct) at 0.700
+    sem-p05 (correct) at 0.566
+    sem-p07 (incorrect) at 0.668
+    sem-p08 (correct) at 0.678
+    sem-p09 (correct) at 0.506
 
   There is no threshold that classifies this set correctly, so none is
   recommended. Leaving the default declared as an uncalibrated constant is
@@ -325,6 +325,10 @@ Semantic threshold calibration
   fluent summary that is confidently wrong about a fact sits close to a
   correct one in embedding space, because it is about the same thing. The
   fix is not a better threshold; it is not relying on this scorer alone.
+
+  ⚠ Labels: 10 of 10 were GENERATED, not assigned
+    by a human. To that extent this figure is a model agreeing with itself
+    rather than a measurement. See ADR 021.
 ```
 
 <!-- /generated:semantic-calibration -->
@@ -481,7 +485,7 @@ not have, and return a different answer each time. So there are two gates
 | workflow | when | what it proves | baseline |
 | --- | --- | --- | --- |
 | `ci.yml` | every push and PR | the **harness** works — typecheck, unit tests, and a full eval replaying fixed outputs. Deterministic, free, no secrets, works on forks. | `evals/baseline.fixture.json` |
-| `eval-live.yml` | manual + weekly | the **models** still behave — real API calls, cache disabled, report uploaded. | `evals/baseline.json` |
+| `eval-live.yml` | manual dispatch; a weekly schedule is configured but has not yet fired | the **models** still behave — real API calls, cache disabled, report uploaded. | `evals/baseline.json` |
 
 ![eval-live failing on GitHub Actions: the run refuses a baseline recorded in
 an older format and exits 1](docs/images/gate-refuses-stale-baseline.png)
@@ -503,8 +507,10 @@ and nothing compares against it.
 
 **The per-push gate cannot catch a model regression.** It runs against
 recordings. A model that got worse overnight passes it, and is caught by the
-weekly run within a week. Saying otherwise would be the exact kind of
-overstatement this project exists to prevent.
+live run — which today means whenever someone dispatches one, because the
+weekly schedule has not yet fired. Writing "within a week" here, as this
+paragraph did, would be exactly the kind of overstatement this project exists
+to prevent: the cron is configured, and configuration is not evidence.
 
 ## Status
 
@@ -525,7 +531,11 @@ overstatement this project exists to prevent.
       cost accounting
 - [x] Baseline file and the CI gate, with a tolerance derived from variance
 - [x] Report — markdown and a JSON artifact
-- [x] CI: fixture gate on every push, live run weekly
+- [x] CI: fixture gate on every push; live run on manual dispatch
+- [ ] Live run on the weekly schedule — the cron is configured (`0 3 * * 1`)
+      and has never fired: the workflow was disabled over the one Monday that
+      has passed since it was added. Ticks when a `schedule` run appears in the
+      history, not before.
 - [x] Live judge calibration — the measured figure is in the generated block
       under "Judging the judge"
 - [x] Live runs against a real subject, with the baseline recorded from one —

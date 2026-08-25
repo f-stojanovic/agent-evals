@@ -1,0 +1,100 @@
+# Semantic calibration ANSWER KEY.
+#
+# Deliberately not in evals/calibration-semantic/. That directory is what an
+# annotator opens, and until 2026-08-25 it contained the labels — under ids
+# that spelled them out (`sem-good-refund-01`, `sem-wrong-topic-01`) beside
+# notes like "THE FLUENT LIE" and "the easy negative". Anyone asked to label
+# the set would have been reading this file's contents and reproducing them.
+# The split is the fix: the texts are over there, the answers are here, and
+# nothing joins them until load time.
+#
+# The loader requires exactly one label per pair and one pair per label, so a
+# renamed or deleted pair is a load-time error rather than a silently
+# unmeasured row.
+#
+# STATUS OF THESE LABELS: GENERATED, NOT HUMAN. Every one was written by an
+# assistant model, which is the thing ADR 021 forbids — a model labelling a set
+# that exists to measure a model. They are kept because deleting them would
+# leave the scorer with no measurement at all, and because the negative result
+# they produce (the groups do not separate) is the one finding a wrong label
+# set is least likely to manufacture. They are queued for replacement by
+# Filip Stojanović and `source` records which are which.
+#
+# TRACEABILITY. `wasId` is the original descriptive id and `wasNote` the
+# original note, kept so the set's history is recoverable and so nobody has to
+# trust that the renaming preserved the pairing. They live here rather than
+# beside the texts because they are answer key too — `sem-wrong-fluent-action-01`
+# states the label in its own name.
+
+sem-p01:
+  label: correct
+  source: generated
+  wasId: sem-good-refund-01
+  wasNote: Close paraphrase, different wording throughout.
+
+sem-p02:
+  label: incorrect
+  source: generated
+  negativeKind: fluent
+  wasId: sem-wrong-fluent-action-01
+  wasNote: >
+    THE FLUENT LIE. Same topic, same register, opposite fact — the customer
+    explicitly declined a replacement. A semantic scorer is close to blind here.
+
+sem-p03:
+  label: incorrect
+  source: generated
+  negativeKind: fluent
+  wasId: sem-wrong-fluent-severity-01
+  wasNote: Fluent, on-topic, and wrong about the thing that decides the urgency field.
+
+sem-p04:
+  label: correct
+  source: generated
+  wasId: sem-good-cancellation-01
+  wasNote: Captures both the complaint and the cancellation enquiry.
+
+sem-p05:
+  label: correct
+  source: generated
+  wasId: sem-good-outage-01
+  wasNote: Correct, and much terser than the reference. Length asymmetry is normal.
+
+sem-p06:
+  label: incorrect
+  source: generated
+  negativeKind: vacuous
+  wasId: sem-wrong-empty-ish-01
+  wasNote: >
+    Says nothing. Included because a model that degrades to generic filler
+    should not score as a near-match on generic support vocabulary.
+
+sem-p07:
+  label: incorrect
+  source: generated
+  negativeKind: fluent
+  wasId: sem-wrong-fluent-entity-01
+  wasNote: >
+    Right shape, wrong customer and wrong invoice. The kind of error that
+    survives review precisely because it reads well.
+
+sem-p08:
+  label: correct
+  source: generated
+  wasId: sem-good-billing-01
+  wasNote: Correct, omitting the invoice number. Detail loss is not an error here.
+
+sem-p09:
+  label: correct
+  source: generated
+  wasId: sem-good-terse-01
+  wasNote: >
+    Aggressively short but not wrong. Included because a threshold tuned only on
+    verbose paraphrases will reject terse-but-correct output.
+
+sem-p10:
+  label: incorrect
+  source: generated
+  negativeKind: off-topic
+  wasId: sem-wrong-topic-01
+  wasNote: Different support topic entirely. The easy negative; included as an anchor.

@@ -24,32 +24,75 @@ import { formatProvenance, provenanceSchema, summariseProvenance, toProvenance }
 import type { Embedder } from './scorers/semantic.js';
 import type { Provenance } from './provenance.js';
 
+/**
+ * The texts, with no label attached.
+ *
+ * The label used to live here, under an id that spelled it out
+ * (`sem-good-refund-01`, `sem-wrong-topic-01`) beside a note that said it
+ * outright ("THE FLUENT LIE"). This file is what an annotator opens, so all
+ * three were an answer key sitting in front of the person being asked for the
+ * answer. See ADR 021.
+ */
 const pairSchema = z.strictObject({
   id: z.string().min(1),
   provenance: provenanceSchema,
-  label: z.enum(['correct', 'incorrect']),
-  note: z.string().optional(),
   reference: z.array(z.string().min(1)).min(1),
   candidate: z.string().min(1),
 });
+
+/** The answer key, loaded from a file the annotator is not looking at. */
+const labelSchema = z.strictObject({
+  label: z.enum(['correct', 'incorrect']),
+  /** Who assigned it. Only `human` satisfies ADR 021; `generated` is the
+   *  outgoing state and is recorded rather than hidden. */
+  source: z.enum(['human', 'generated']),
+  /**
+   * For an `incorrect` pair, HOW it is wrong.
+   *
+   * This used to be inferable from the id — `sem-wrong-fluent-action-01` said
+   * "fluent" in its name, and a test filtered on that substring to assert the
+   * set contains real fluent lies rather than only gibberish. Opaque ids
+   * removed the substring, and it cannot be recovered from the text: lexical
+   * overlap ranks the fluent-severity pair (0.128) BELOW the off-topic one
+   * (0.167), because its fluency is semantic. So the property is recorded
+   * rather than inferred, and it lives here because it is answer key.
+   */
+  negativeKind: z.enum(['fluent', 'off-topic', 'vacuous']).optional(),
+  /** The original descriptive id, kept so the renaming is reversible and the
+   *  pairing can be audited without trusting that it was done correctly. */
+  wasId: z.string().min(1).optional(),
+  wasNote: z.string().optional(),
+});
+
+export type LabelSource = 'human' | 'generated';
+export type NegativeKind = 'fluent' | 'off-topic' | 'vacuous';
 
 export type SemanticPair = {
   id: string;
   provenance: Provenance;
   label: 'correct' | 'incorrect';
-  note?: string;
+  labelSource: LabelSource;
+  negativeKind?: NegativeKind;
   reference: string[];
   candidate: string;
 };
 
-export async function loadSemanticPairs(dir: string): Promise<SemanticPair[]> {
+export const DEFAULT_LABELS_FILE = 'evals/calibration-semantic-labels.yaml';
+
+export async function loadSemanticPairs(
+  dir: string,
+  labelsFile: string = DEFAULT_LABELS_FILE,
+): Promise<SemanticPair[]> {
   const entries = await readdir(dir, { withFileTypes: true });
   const files = entries
     .filter((e) => e.isFile() && /\.ya?ml$/i.test(e.name))
     .map((e) => join(dir, e.name))
     .sort();
 
+  const labels = await loadLabels(labelsFile);
+
   const pairs: SemanticPair[] = [];
+  const seen = new Set<string>();
   for (const file of files) {
     const document: unknown = parseYaml(await readFile(file, 'utf8'));
     if (document === null || document === undefined) continue;
@@ -63,18 +106,73 @@ export async function loadSemanticPairs(dir: string): Promise<SemanticPair[]> {
             .join('; ')}`,
         );
       }
+      const label = labels.get(parsed.data.id);
+      /* An unlabelled pair must not load as an unmeasured row. Splitting the
+         files bought secrecy from the annotator and cost the guarantee that a
+         label exists at all, so the join replaces it. */
+      if (label === undefined) {
+        throw new Error(
+          `${file} [pair ${index}]: "${parsed.data.id}" has no label in ${labelsFile}. ` +
+            `Every pair needs one, or it is carried through the calibration measuring nothing.`,
+        );
+      }
+      /* A `negativeKind` on a positive label is a relabelling half done: the
+         label flipped and the metadata describing how it was wrong did not. */
+      if (label.label === 'correct' && label.negativeKind !== undefined) {
+        throw new Error(
+          `${labelsFile} [${parsed.data.id}]: labelled "correct" but carries ` +
+            `negativeKind "${label.negativeKind}", which only describes an incorrect pair.`,
+        );
+      }
+      seen.add(parsed.data.id);
       pairs.push({
         id: parsed.data.id,
         provenance: toProvenance(parsed.data.provenance),
-        label: parsed.data.label,
+        label: label.label,
+        labelSource: label.source,
         reference: [...parsed.data.reference],
         candidate: parsed.data.candidate,
-        ...(parsed.data.note !== undefined && { note: parsed.data.note }),
+        ...(label.negativeKind !== undefined && { negativeKind: label.negativeKind }),
       });
     }
   }
+
+  /* And the other direction: a label with no pair means a rename went half
+     done, and the pair it used to describe is now unlabelled somewhere else —
+     or was deleted, which is the cheapest way to drop an inconvenient row. */
+  const orphaned = [...labels.keys()].filter((id) => !seen.has(id)).sort();
+  if (orphaned.length > 0) {
+    throw new Error(
+      `${labelsFile}: labels with no matching pair: ${orphaned.join(', ')}. ` +
+        `Either the pair was renamed and the label was not, or it was deleted.`,
+    );
+  }
+
   pairs.sort((a, b) => (a.id < b.id ? -1 : 1));
   return pairs;
+}
+
+async function loadLabels(
+  file: string,
+): Promise<Map<string, z.infer<typeof labelSchema>>> {
+  const document: unknown = parseYaml(await readFile(file, 'utf8'));
+  if (document === null || document === undefined || typeof document !== 'object') {
+    throw new Error(`${file}: expected a mapping of pair id to label`);
+  }
+
+  const labels = new Map<string, z.infer<typeof labelSchema>>();
+  for (const [id, raw] of Object.entries(document as Record<string, unknown>)) {
+    const parsed = labelSchema.safeParse(raw);
+    if (!parsed.success) {
+      throw new Error(
+        `${file} [${id}]: ${parsed.error.issues
+          .map((i) => `${i.path.join('.')} ${i.message}`)
+          .join('; ')}`,
+      );
+    }
+    labels.set(id, parsed.data);
+  }
+  return labels;
 }
 
 export type ScoredPair = SemanticPair & { similarity: number };
@@ -194,7 +292,21 @@ export function formatSemanticCalibration(
     );
   }
 
-  return [...lines, '', ...provenanceLine].join('\n');
+  /* Who assigned the labels sits next to the number they produced, for the
+     same reason provenance does (ADR 015, ADR 021): a separation figure means
+     one thing measured against a human's labels and another entirely against
+     labels the system under test wrote. */
+  const generated = report.scored.filter((p) => p.labelSource === 'generated');
+  const labelLine =
+    generated.length === 0
+      ? ['  Labels: all assigned by a human.']
+      : [
+          `  ⚠ Labels: ${generated.length} of ${report.scored.length} were GENERATED, not assigned`,
+          `    by a human. To that extent this figure is a model agreeing with itself`,
+          `    rather than a measurement. See ADR 021.`,
+        ];
+
+  return [...lines, '', ...labelLine, ...(provenanceLine.length > 0 ? [''] : []), ...provenanceLine].join('\n');
 }
 
 /* `npm run calibrate:semantic`. Local encoder only — no API key, no cost. */

@@ -15,8 +15,17 @@ Evidence: BOTH WORKFLOWS HAVE RUN, 2026-08-20, on
           The fixtures are RECORDED for three of five cases and hand-authored
           for two added without budget for a live run; each declares which, and
           the report prints the tally.
-          What would still count: a scheduled `eval-live` that passes, which has
-          not yet happened.
+          A dispatched `eval-live` has since PASSED, 2026-08-24, against the
+          re-recorded v2 baseline — both directions of the live gate now
+          observed on real infrastructure.
+          THE SCHEDULE HAS NEVER FIRED. The weekly cron (`0 3 * * 1`) was added
+          2026-08-20 and the workflow was disabled from then until roughly
+          14:00 UTC on 2026-08-24, so Monday 03:00 UTC passed while it was off.
+          Nothing is wrong with the workflow and nothing was changed to fix it;
+          the run history simply contains no `schedule` event, only two
+          `workflow_dispatch` runs. Until one appears, "runs weekly" is
+          configuration rather than evidence, and the README says so.
+          What would still count: a scheduled `eval-live` that completes.
 
 ## Context
 

@@ -17,8 +17,17 @@ Evidence: MEASURED, 2026-08-20 — the first time this ADR has had any. The
           Still unobserved: a CI failure avoided that a hosted embedding key
           would have caused. The argument for local embeddings is about a
           failure mode that has not yet had the chance to happen here.
-          The cost side remains observed: `npm audit` reports two high-severity
-          transitive advisories from this dependency with no upstream fix.
+          The cost side remains observed, and the earlier count here was wrong.
+          `npm audit` reports FOUR high-severity vulnerable packages, all
+          transitive through `@huggingface/transformers` and none with an
+          upstream fix: `@huggingface/transformers`, `onnxruntime-node`,
+          `adm-zip` and `sharp`. They arise from two advisories —
+          GHSA-xcpc-8h2w-3j85 (adm-zip: a crafted ZIP triggers a 4GB memory
+          allocation) and GHSA-f88m-g3jw-g9cj (sharp, inheriting libvips
+          CVE-2026-33327, CVE-2026-33328, CVE-2026-35590 and CVE-2026-35591).
+          This line previously said "two high-severity transitive advisories",
+          which counted advisories where `npm audit` counts packages; both
+          numbers are now stated so neither reads as the other.
 
 ## Context
 

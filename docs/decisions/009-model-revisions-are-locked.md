@@ -5,9 +5,23 @@ Status: Accepted. Implemented for both the embedding model and the judge.
 Evidence: Partial. The lock logic — writing on first run, failing on a
           changed model id or dtype, recording an unresolvable revision as null
           — is covered by src/models-lock.test.ts against an injected resolver.
-          Nothing has exercised it for real: models.lock.json has never been
-          written, no revision has ever been resolved from the Hugging Face
-          API, and the judge slot has never been populated by a live call.
+          EXERCISED FOR REAL since, and this line said otherwise until
+          2026-08-25. `models.lock.json` exists and is committed with both
+          slots populated: the embedding slot holds
+          `Xenova/all-MiniLM-L6-v2` at revision
+          `751bff37182d3f1213fa05d7196b954e230abad9`, resolved from the Hugging
+          Face API on 2026-08-20 rather than typed in, and the judge slot holds
+          `claude-opus-5`, written by a live run and matched against on every
+          run since.
+          The judge revision is recorded as `null` because the provider exposes
+          none, which is the weak-pin limitation this ADR names rather than a
+          gap in the mechanism.
+          The previous wording — "never been written, no revision has ever been
+          resolved, the judge slot has never been populated" — contradicted
+          ADR 008's own Evidence line, which recorded the resolution that had
+          happened. Two Evidence lines disagreeing about the same file for five
+          days is the defect ADR 017 exists for, and no check catches it:
+          nothing verifies an Evidence line against the state it describes.
           The temperature claim is verified against the current API
           documentation, not against a 400 this repository received.
 
