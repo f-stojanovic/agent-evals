@@ -232,6 +232,42 @@ describe('README images', () => {
        to as well, or the evidence is invisible to anyone using a reader. */
     expect(withoutAlt).toEqual([]);
   });
+
+  /**
+   * The other direction, which was missing and cost something.
+   *
+   * The check above asserts every reference resolves to a file. It says nothing
+   * about a file that no reference points at, so
+   * `docs/images/ci-both-workflows-green.png` sat committed and unreferenced
+   * and the suite stayed green — a screenshot taken as evidence, checked in,
+   * and invisible to every reader of the page it was taken for.
+   *
+   * An unreferenced image is not untidiness. It is the same defect as a
+   * documented claim with nothing behind it, pointing the other way: evidence
+   * exists, the document does not cite it, and nobody can tell the difference
+   * between that and evidence that was never gathered. It also rots — an image
+   * nothing displays is one nobody re-checks when the thing it shows changes.
+   */
+  it('every image committed under docs/images is referenced by a document', async () => {
+    const imageDir = join(ROOT, 'docs', 'images');
+    const onDisk = (await walk(imageDir, /\.(png|jpe?g|gif|svg|webp)$/i)).map((file) =>
+      file.slice(ROOT.length).replace(/\\/g, '/'),
+    );
+
+    expectNonEmptyCorpus(onDisk, 'no images found under docs/images');
+
+    /* Every markdown document, not only the README: an ADR is as good a home
+       for a screenshot, and flagging one as an orphan would train whoever sees
+       it to ignore this check. */
+    const documents = [readme, ...(await Promise.all(
+      (await walk(DOCS, /\.md$/)).map((file) => readFile(file, 'utf8')),
+    ))];
+    expectNonEmptyCorpus(documents, 'no markdown documents found to scan for references');
+
+    const orphans = onDisk.filter((src) => !documents.some((doc) => doc.includes(src)));
+
+    expect(orphans).toEqual([]);
+  });
 });
 
 /* ------------------------------------------------------------------ *
