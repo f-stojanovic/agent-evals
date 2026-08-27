@@ -33,17 +33,23 @@
     "readme:refresh": "tsx src/readme-refresh.ts"
   },
   "dependencies": {
-    "@huggingface/transformers": "^4.2.0",
     "ajv": "^8.20.0",
     "dotenv": "^17.4.2",
     "yaml": "^2.8.1",
     "zod": "^4.1.12"
   },
   "peerDependencies": {
-    "@anthropic-ai/sdk": ">=0.117.1 <1"
+    "@anthropic-ai/sdk": ">=0.117.1 <1",
+    "@huggingface/transformers": "^4.2.0"
+  },
+  "peerDependenciesMeta": {
+    "@huggingface/transformers": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.117.1",
+    "@huggingface/transformers": "^4.2.0",
     "@types/node": "^22.18.9",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3",

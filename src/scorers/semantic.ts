@@ -103,10 +103,7 @@ export function localEmbedder(options: LocalEmbedderOptions = {}): Embedder {
        fast instead of after a download. */
     const entry = await locked();
     if (pipelinePromise === undefined) {
-      /* Imported lazily so that merely importing this module does not pull in
-         the ONNX runtime — which matters for anyone using only the
-         deterministic scorers. */
-      const { pipeline } = await import('@huggingface/transformers');
+      const { pipeline } = await loadTransformers();
       pipelinePromise = pipeline('feature-extraction', config.modelId, {
         dtype: config.dtype,
         ...(entry.revision !== null && { revision: entry.revision }),
@@ -125,6 +122,83 @@ export function localEmbedder(options: LocalEmbedderOptions = {}): Embedder {
       return result.tolist();
     },
   };
+}
+
+/** The shape `loadTransformers` needs back. Declared locally so the import can
+ *  stay dynamic and no type-level dependency on the peer is created either. */
+export type TransformersModule = {
+  pipeline: (
+    task: 'feature-extraction',
+    model: string,
+    options: { dtype: string; revision?: string },
+  ) => unknown;
+};
+
+/** Injected only by the tests. Real callers get the dynamic import. */
+export type TransformersImporter = () => Promise<TransformersModule>;
+
+/**
+ * The peer is missing, and this says so in a sentence somebody can act on.
+ *
+ * WHY THIS CLASS EXISTS RATHER THAN LETTING THE IMPORT THROW
+ * ----------------------------------------------------------
+ * `@huggingface/transformers` is an OPTIONAL peer dependency (ADR 025): it is
+ * 340MB of ONNX runtime that only `semanticSimilarity` needs, npm does not
+ * install optional peers, and a consumer using the five deterministic scorers
+ * should never pay for it.
+ *
+ * The cost of that is a new way to fail, and it is the same SHAPE of failure
+ * this package spent ADR 023 fixing: an install that reports success, and a
+ * first symptom that appears somewhere else entirely. There the symptom was
+ * `ERR_MODULE_NOT_FOUND` on `dist/index.js`, which reads as a broken build;
+ * here it would be `ERR_MODULE_NOT_FOUND` on a package the consumer never
+ * asked for and never listed, which reads as a broken dependency tree.
+ *
+ * So the message is the mitigation, and it has to carry three things a stack
+ * trace does not: that the package is deliberately optional, which scorer
+ * wanted it, and the exact command that fixes it.
+ */
+export class SemanticScorerUnavailableError extends Error {
+  override readonly name = 'SemanticScorerUnavailableError';
+  constructor(cause: unknown) {
+    super(
+      `The semantic scorer needs "@huggingface/transformers", which is not installed.\n\n` +
+        `It is an OPTIONAL peer dependency of agent-evals, so npm does not install it ` +
+        `for you. That is deliberate: it pulls roughly 340MB of ONNX runtime, and the ` +
+        `other five scorers — exactFields, matchesSchema, callsTool, formatCompliance ` +
+        `and llmJudge — do not need any of it.\n\n` +
+        `If you want semanticSimilarity, install it in YOUR project:\n\n` +
+        `    npm i -D @huggingface/transformers\n\n` +
+        `If you do not, drop semanticSimilarity from the scorer list you pass to ` +
+        `runSuite. Nothing else in agent-evals imports this package.\n\n` +
+        `Note that its threshold was never calibrated here (margin -0.392, eight of ` +
+        `ten pairs overlapping, no threshold adopted), so "do not" is a reasonable ` +
+        `answer.\n\n` +
+        `The underlying import failed with: ${cause instanceof Error ? cause.message : String(cause)}`,
+      { cause },
+    );
+  }
+}
+
+/**
+ * Loads the peer, or throws something worth reading.
+ *
+ * Not exported from `src/index.ts`: it is internal, and the importer parameter
+ * exists so the missing-peer path can be tested without uninstalling a package
+ * the rest of the suite needs.
+ */
+export async function loadTransformers(
+  importer?: TransformersImporter,
+): Promise<TransformersModule> {
+  try {
+    /* Lazy so that merely importing this module — which `src/index.ts` does on
+       every consumer's first import — does not pull in the ONNX runtime. */
+    return importer === undefined
+      ? ((await import('@huggingface/transformers')) as unknown as TransformersModule)
+      : await importer();
+  } catch (cause) {
+    throw new SemanticScorerUnavailableError(cause);
+  }
 }
 
 /** The slice of transformers.js this module uses, declared locally so the

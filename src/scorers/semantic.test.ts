@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { cosineSimilarity, semanticSimilarity } from './semantic.js';
+import {
+  SemanticScorerUnavailableError,
+  cosineSimilarity,
+  loadTransformers,
+  semanticSimilarity,
+} from './semantic.js';
 import { evalCase, scoreArgs, subjectOutput } from '../testing.js';
 import type { Embedder } from './semantic.js';
 import type { LockedModel } from '../models-lock.js';
@@ -263,4 +268,76 @@ describe.skipIf(process.env['RUN_MODEL_TESTS'] !== '1')('semanticSimilarity [int
     expect(close.value).toBeGreaterThan(far.value);
     expect(Number.isFinite(close.value)).toBe(true);
   }, 300_000);
+});
+
+/**
+ * The missing-peer path.
+ *
+ * `@huggingface/transformers` is an optional peer (ADR 025), so npm does not
+ * install it into a consumer and this is a path real consumers WILL take. It
+ * is tested through the injected importer rather than by uninstalling the
+ * package, because uninstalling it would also disable the integration test
+ * above and the calibration script, for a failure mode that is entirely about
+ * how one rejected promise is wrapped.
+ *
+ * WHAT THAT DOES NOT COVER, stated rather than left for someone to discover:
+ * the injected importer proves the wrapping, not the wiring. It does not prove
+ * that the real `await import('@huggingface/transformers')` is the thing that
+ * throws when the package is absent, because in this repo it never is absent.
+ * That half is covered outside the unit tests, by installing the branch into a
+ * scratch consumer with no transformers and calling `localEmbedder().embed()`
+ * there — the measurement recorded in ADR 025's Evidence line.
+ */
+describe('loadTransformers, when the optional peer is absent', () => {
+  const absent = (): Promise<never> =>
+    Promise.reject(
+      Object.assign(new Error("Cannot find package '@huggingface/transformers'"), {
+        code: 'ERR_MODULE_NOT_FOUND',
+      }),
+    );
+
+  /* `promise.catch(e => e)` widens to `Resolved | Error`, which does not have
+     `.message`. Narrowing here keeps every assertion below readable and makes a
+     promise that unexpectedly RESOLVES a test failure rather than a type error
+     six lines later. */
+  const rejection = async (promise: Promise<unknown>): Promise<Error> => {
+    const outcome = await promise.then(
+      () => undefined,
+      (error: unknown) => error as Error,
+    );
+    if (outcome === undefined) throw new Error('expected a rejection, got a resolved value');
+    return outcome;
+  };
+
+  it('throws SemanticScorerUnavailableError rather than the raw import failure', async () => {
+    await expect(loadTransformers(absent)).rejects.toBeInstanceOf(SemanticScorerUnavailableError);
+  });
+
+  it('names the package, the install command, and the way out', async () => {
+    const error = await rejection(loadTransformers(absent));
+
+    /* Each of these is a thing the reader has to be able to do something with.
+       A stack trace carries none of them. */
+    expect(error.message).toContain('@huggingface/transformers');
+    expect(error.message).toContain('npm i -D @huggingface/transformers');
+    expect(error.message).toContain('OPTIONAL peer dependency');
+    expect(error.message).toContain('semanticSimilarity');
+  });
+
+  it('keeps the original failure as `cause` rather than swallowing it', async () => {
+    const error = await rejection(loadTransformers(absent));
+
+    expect((error.cause as Error | undefined)?.message).toContain(
+      "Cannot find package '@huggingface/transformers'",
+    );
+    /* And repeats it in the text, because `cause` is invisible in most logs. */
+    expect(error.message).toContain("Cannot find package '@huggingface/transformers'");
+  });
+
+  it('does not fire when the peer loads', async () => {
+    const present = (): Promise<{ pipeline: () => unknown }> =>
+      Promise.resolve({ pipeline: () => ({}) });
+
+    await expect(loadTransformers(present)).resolves.toHaveProperty('pipeline');
+  });
 });
