@@ -164,16 +164,19 @@ export class SemanticScorerUnavailableError extends Error {
     super(
       `The semantic scorer needs "@huggingface/transformers", which is not installed.\n\n` +
         `It is an OPTIONAL peer dependency of agent-evals, so npm does not install it ` +
-        `for you. That is deliberate: it pulls roughly 340MB of ONNX runtime, and the ` +
-        `other five scorers — exactFields, matchesSchema, callsTool, formatCompliance ` +
-        `and llmJudge — do not need any of it.\n\n` +
+        `for you. That is deliberate: it pulls in several hundred megabytes of ONNX ` +
+        `runtime — the measured figures are in ADR 025 — and the other five scorers ` +
+        `— exactFields, matchesSchema, callsTool, formatCompliance and llmJudge — do ` +
+        `not need any of it.\n\n` +
         `If you want semanticSimilarity, install it in YOUR project:\n\n` +
         `    npm i -D @huggingface/transformers\n\n` +
         `If you do not, drop semanticSimilarity from the scorer list you pass to ` +
         `runSuite. Nothing else in agent-evals imports this package.\n\n` +
-        `Note that its threshold was never calibrated here (margin -0.392, eight of ` +
-        `ten pairs overlapping, no threshold adopted), so "do not" is a reasonable ` +
-        `answer.\n\n` +
+        `"Do not" is a reasonable answer: this scorer's threshold was never ` +
+        `adopted here, because calibration against the labelled pairs did not ` +
+        `separate matching from non-matching ones. The figures are in ADR 010 ` +
+        `and the pairs are in evals/calibration-semantic/; re-run it with ` +
+        `npm run calibrate:semantic.\n\n` +
         `The underlying import failed with: ${cause instanceof Error ? cause.message : String(cause)}`,
       { cause },
     );

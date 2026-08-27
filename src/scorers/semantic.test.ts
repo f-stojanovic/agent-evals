@@ -313,6 +313,31 @@ describe('loadTransformers, when the optional peer is absent', () => {
     await expect(loadTransformers(absent)).rejects.toBeInstanceOf(SemanticScorerUnavailableError);
   });
 
+  /**
+   * NO FIGURE IN THE STRING, DELIBERATELY.
+   *
+   * This message used to carry the calibration numbers — margin, pair count.
+   * A number in a string literal is anchored to nothing: no test recomputes it,
+   * no file feeds it, and it goes stale silently. That is the same defect as
+   * the `fixtures.ts` docstring C6 now bans, one layer down. The claim stays
+   * because it changes the reader's decision about installing 340MB; the
+   * evidence moves to the ADR, which is where a figure lives.
+   */
+  it('cites the calibration finding without restating its figures', async () => {
+    const error = await rejection(loadTransformers(absent));
+
+    expect(error.message).toContain('never');
+    expect(error.message).toContain('ADR 010');
+    /* No figure of any kind: not the calibration margin, not the pair count,
+       and not the install size, which was the same defect wearing a unit. Each
+       is measured somewhere that something reads; none of them is anchored by
+       sitting in a string. */
+    expect(error.message).not.toMatch(/-?0\.\d{3}/);
+    expect(error.message).not.toContain('eight of ten');
+    expect(error.message).not.toMatch(/\d+\s*[MG]B/i);
+    expect(error.message).toContain('ADR 025');
+  });
+
   it('names the package, the install command, and the way out', async () => {
     const error = await rejection(loadTransformers(absent));
 
