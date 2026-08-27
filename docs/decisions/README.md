@@ -26,7 +26,7 @@
 | [022](022-a-gate-must-not-screen-on-a-summary.md) | A case mean is a summary, and a gate must not screen on a summary | Accepted — baseline v3; the miss and the catch are both measured |
 | [023](023-this-package-is-consumed-as-a-git-dependency.md) | This package is consumed as a git dependency, and that has to be packaged for | Accepted — both install probes measured; the GitHub path itself is still unobserved |
 | [024](024-the-sdk-is-a-peer-dependency.md) | The Anthropic SDK is a peer dependency, so a consumer runs one copy | Accepted — range asserted at `<1`, tested at three points |
-| [025](025-transformers-is-an-optional-peer.md) | `@huggingface/transformers` is an optional peer, so five scorers cost nothing | Accepted — 477 MB → 27 MB measured in a scratch consumer |
+| [025](025-transformers-is-an-optional-peer.md) | `@huggingface/transformers` is an optional peer, so five scorers cost nothing | Accepted — 27 MB clean-room install measured; the saving in `voice-check` is not |
 
 ## Two axes: Status and Evidence
 

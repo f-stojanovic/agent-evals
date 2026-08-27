@@ -31,9 +31,22 @@ Evidence: THE DUPLICATION, MEASURED, 2026-08-26. Installing this package into
           measured. 0.121.0 was tested only because npm chose it for a bare
           consumer, which is a fair description of how much of this range
           anyone has looked at.
+          UNMET-PEER BEHAVIOUR, MEASURED 2026-08-27, four consumers, because
+          the case for leaving the static import alone rested on npm being loud
+          and it is loud in only one of them:
+          no SDK + default install — no warning, npm auto-installs 0.121.0,
+          import works.
+          SDK pinned to 0.60.0 + default install — `npm error code ERESOLVE`,
+          quoting `peer @anthropic-ai/sdk@">=0.117.1 <1" from agent-evals@0.1.0`;
+          the install fails.
+          no SDK + `--legacy-peer-deps` — "added 9 packages", NO WARNING, and
+          `import('agent-evals')` then fails with `ERR_MODULE_NOT_FOUND` on
+          `@anthropic-ai/sdk`.
+          SDK at 0.60.0 + `--legacy-peer-deps` — "added 10 packages", NO
+          WARNING, and the import SUCCEEDS against a version outside the
+          declared range.
           NOT MEASURED: any release between 0.117.1 and 0.120.0, anything above
-          0.121.0, and any behaviour at all under a package manager that does
-          not auto-install required peers.
+          0.121.0, and pnpm or yarn.
 
 ## Context
 
@@ -92,14 +105,39 @@ whose argument is that a recorded number is attributable. No validator is added
 in this pass, deliberately: the gap is now measured rather than suspected, and
 what to do about it is a decision with the instrumentation work in front of it.
 
-**Both SDK imports are top level and static.** `src/index.ts` re-exports
-`anthropicJudge` from `judge.ts`, which imports the SDK at module scope, so a
-consumer without the SDK cannot import this package at all — not even to use
-`exactFields`. npm 7+ auto-installs required peers, which is why the bare-consumer
-probe above worked, so this is not a problem on npm. It is a problem under any
-installer that does not, and `--legacy-peer-deps` is the obvious one. Not fixed
-here; unlike the transformers case (ADR 025) the peer is required, so npm's
-default behaviour covers the mainstream path.
+**KNOWN LIMITATION, ACCEPTED, NOT FIXED: both SDK imports are top level and
+static.** `src/index.ts` re-exports `anthropicJudge` from `judge.ts`, which
+imports the SDK at module scope, so a consumer without the SDK cannot import
+this package at all — not even to use `exactFields`.
+
+npm's behaviour here is not one behaviour, and the three cases were measured
+rather than assumed, because the argument for leaving this alone was originally
+"npm warns loudly when a peer is unmet" and that is only sometimes true:
+
+| consumer | npm says | result |
+| --- | --- | --- |
+| no SDK, default install | nothing | auto-installs 0.121.0; import works |
+| SDK outside the range, default install | **`npm error code ERESOLVE`**, quoting `peer @anthropic-ai/sdk@">=0.117.1 <1" from agent-evals@0.1.0` | install fails |
+| no SDK, `--legacy-peer-deps` | **nothing — "added 9 packages"** | import fails with `ERR_MODULE_NOT_FOUND` on `@anthropic-ai/sdk` |
+| SDK at 0.60.0, `--legacy-peer-deps` | **nothing — "added 10 packages"** | import SUCCEEDS, against a version this package does not support |
+
+So npm is loud on a conflict and silent on an absence or an override. The
+third row is a silently-green install whose first symptom appears in the
+consumer's code — the exact shape ADR 023 was written about — and the honest
+reading is that `--legacy-peer-deps` reintroduces it.
+
+It is still not fixed, and the reason is the fourth row rather than the third.
+Making the import lazy would convert row three from "cannot import the package"
+into "can import the package until you construct a judge", which is a later and
+more confusing failure for the same missing dependency; row three at least fails
+immediately and names the package. Row four is the dangerous one — running
+against 0.60.0 with no signal at all — and a lazy import does nothing for it.
+What does is the boundary validator (`src/sdk-usage.ts`, ADR 026): if 0.60.0's
+`usage` shape differs from what this code reads, `parseSdkUsage` refuses, with a
+message naming the peer range and `npm ls @anthropic-ai/sdk`.
+
+Which is the argument: the mitigation for `--legacy-peer-deps` is validating
+what arrives, not deferring when it is loaded.
 
 ## Alternatives rejected
 

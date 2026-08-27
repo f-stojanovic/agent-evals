@@ -3,20 +3,36 @@
 Date: 2026-08-27
 Status: Accepted. Moved from `dependencies` to `peerDependencies` with
 `peerDependenciesMeta.optional: true`, kept in `devDependencies` so the semantic
-scorer's own tests and `calibrate:semantic` still run here.
+scorer's own tests and `calibrate:semantic` still run here. The saving in the
+consumer that matters is not yet measured — see `Evidence:`.
 Evidence: THE COST, MEASURED 2026-08-26 in `voice-check`. Taking this package as
           a dev dependency moved `node_modules` from 78,760 KB to 477,152 KB.
           `onnxruntime-node` was 215,288 KB and `onnxruntime-web` 132,852 KB —
           340MB of the 400MB delta, reached only through
           `@huggingface/transformers`.
-          THE SAVING, MEASURED 2026-08-27. A scratch consumer installing this
-          branch from a `git+file://` URL: **27,328 KB** — `du -sh` reports
-          27M — against 477,152 KB before, and 16 packages installed rather
-          than 66. `find node_modules -maxdepth 2 -name "onnxruntime*"` returns
-          nothing; the runtime is not present at all.
-          That is a larger saving than the ~140MB expected when this change was
-          proposed, and the expectation is recorded here only because the
-          measured figure should not be confused with it.
+          THE CLEAN-ROOM INSTALL, MEASURED 2026-08-27, AND IT IS NOT A
+          BEFORE-AND-AFTER. An empty scratch consumer whose only dependency is
+          this package, installed from a `git+file://` URL: **27,328 KB**, 16
+          packages, and `find node_modules -maxdepth 2 -name "onnxruntime*"`
+          returns nothing — the runtime is not present at all.
+          THAT NUMBER MUST NOT BE SUBTRACTED FROM THE 477,152 KB ABOVE. The two
+          measure different populations: 477,152 KB is `voice-check` carrying
+          its own dependency tree plus this package, and 27,328 KB is a
+          directory containing nothing else. The difference between them is
+          mostly `voice-check`, not mostly the saving, and a "477 MB → 27 MB"
+          reading overstates what this change did. An earlier version of this
+          line presented exactly that pairing.
+          WHAT THE SAVING ACTUALLY IS, in the only place it matters: unmeasured.
+          The figure that says anything about the Render build is `voice-check`'s
+          own `node_modules` with this branch pinned, and that is next pass's
+          measurement — `voice-check` is deliberately untouched here.
+          What can be said from the clean-room install alone: onnxruntime is
+          absent rather than smaller, and the 215,288 KB + 132,852 KB it
+          occupied in the earlier `voice-check` install is therefore not
+          installed at all.
+          The change was proposed expecting roughly 140MB. That expectation is
+          recorded because it was wrong in the direction that flatters the
+          change, and because it is not a result.
           THE DETERMINISTIC PATH STILL WORKS, end to end, in that same
           consumer with no transformers installed: `import('agent-evals')`
           resolves 67 exports; `exactFields()` and `formatCompliance()`
