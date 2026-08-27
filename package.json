@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "Evaluation harness for LLM agents with an immutable baseline enforced as a CI gate.",
   "license": "MIT",
-  "author": "Filip Stojanovi\u0107",
+  "author": "Filip Stojanović",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -33,14 +33,17 @@
     "readme:refresh": "tsx src/readme-refresh.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.117.1",
     "@huggingface/transformers": "^4.2.0",
     "ajv": "^8.20.0",
     "dotenv": "^17.4.2",
     "yaml": "^2.8.1",
     "zod": "^4.1.12"
   },
+  "peerDependencies": {
+    "@anthropic-ai/sdk": ">=0.117.1 <1"
+  },
   "devDependencies": {
+    "@anthropic-ai/sdk": "^0.117.1",
     "@types/node": "^22.18.9",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3",
