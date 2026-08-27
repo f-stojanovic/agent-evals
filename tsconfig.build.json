@@ -2,5 +2,20 @@
   /* `build` emits the library only. `typecheck` uses the base config, which
      also covers *.test.ts — tests are type-checked but never shipped. */
   "extends": "./tsconfig.json",
-  "exclude": ["src/**/*.test.ts"]
+  "exclude": ["src/**/*.test.ts"],
+  "compilerOptions": {
+    /* OFF FOR THE SHIPPED BUILD ONLY, because of `files: ["dist"]`. The maps
+       name `../src/*.ts` as their sources and `src/` is not packed, so in a
+       consumer's node_modules every one points at a path that does not exist.
+       A map that resolves to nothing is worse than no map: it fails at the
+       moment somebody is already debugging, and until it fails it claims to be
+       showing source while showing compiled output.
+
+       `tsconfig.json` keeps both ON. It drives `typecheck`, which runs
+       --noEmit and covers *.test.ts, so nothing there changes; and an editor
+       open on this repo still resolves sources, because it reads the base
+       config and `src/` is right there. */
+    "declarationMap": false,
+    "sourceMap": false
+  }
 }

@@ -135,13 +135,25 @@ paragraph it replaces, and because it is version-specific. It has not been
 checked on any other npm, and a future npm that honours the flag here would
 reintroduce the silent three-file install with no signal at all.
 
-**`declarationMap` and `sourceMap` are on, and the sources they point at are not
-packed.** `files: ["dist"]` excludes `src/`, so a consumer's `.d.ts.map` and
-`.js.map` reference files that do not exist in their `node_modules`. Go-to-
-definition and stack-trace mapping degrade to the compiled output. Not fixed
-here, because fixing it means either shipping `src/` or turning the maps off,
-and both are choices worth making with a consumer in front of us rather than in
-advance.
+**`declarationMap` and `sourceMap` were on, and the sources they point at are
+not packed. FIXED 2026-08-27; both are now off in `tsconfig.build.json`.**
+`files: ["dist"]` excludes `src/`, and MEASURED: `dist/index.d.ts.map` named
+`["../src/index.ts"]` as its sources while `files` was `["dist"]`, so all 54
+map files in a consumer's `node_modules` pointed at paths that do not exist
+there. A map that resolves to nothing is worse than no map — it fails at the
+moment somebody is already debugging, and until it fails it claims to show
+source while showing compiled output.
+
+Both are off in `tsconfig.build.json` only. `tsconfig.json` keeps them on and
+still drives `typecheck`; VERIFIED that the split holds rather than assumed, by
+injecting a type error into `src/pricing.test.ts` and confirming `npm run
+typecheck` still reports it (`src/pricing.test.ts(65,7): error TS2322`) while
+`dist/` contains zero test files. Emitted `dist/` went 768 KB → 452 KB, 27
+`.d.ts.map` and 27 `.js.map` → zero.
+
+Shipping `src/` was the alternative and is rejected: it doubles what a consumer
+downloads to restore a convenience for a library consumed by one repository,
+whose sources are one `git clone` away for anyone who needs them.
 
 ## Alternatives rejected
 
