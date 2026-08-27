@@ -13,6 +13,7 @@
 
 import { config as loadDotenv } from 'dotenv';
 import Anthropic from '@anthropic-ai/sdk';
+import { parseSdkUsage } from '../sdk-usage.js';
 import type { Subject, SubjectOutput } from '../types.js';
 
 export const SUBJECT_MODEL = 'claude-sonnet-5';
@@ -175,10 +176,10 @@ export function supportExtractionSubject(options: SupportExtractionOptions = {})
          normalised today. */
       raw: response,
       model: response.model,
-      usage: {
-        inputTokens: response.usage.input_tokens,
-        outputTokens: response.usage.output_tokens,
-      },
+      /* Validated, not destructured — see src/sdk-usage.ts. This site also used
+         to drop the cache counts on the floor; `parseSdkUsage` carries them
+         when the SDK sends them. */
+      usage: parseSdkUsage(response.usage, SUBJECT_ID),
       latencyMs: Date.now() - started,
       ...(text !== '' && { text }),
       ...(toolCalls.length > 0 && { toolCalls }),

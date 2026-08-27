@@ -13,6 +13,7 @@
 import { config as loadDotenv } from 'dotenv';
 import Anthropic from '@anthropic-ai/sdk';
 import { ensureModelLock } from '../models-lock.js';
+import { parseSdkUsage } from '../sdk-usage.js';
 import type { LockedModel } from '../models-lock.js';
 import type {
   EvalCase,
@@ -231,16 +232,10 @@ export function anthropicJudge(options: AnthropicJudgeOptions = {}): JudgeClient
       return {
         verdict: parseVerdict(call.input, model),
         model: response.model,
-        usage: {
-          inputTokens: response.usage.input_tokens,
-          outputTokens: response.usage.output_tokens,
-          ...(response.usage.cache_read_input_tokens != null && {
-            cacheReadTokens: response.usage.cache_read_input_tokens,
-          }),
-          ...(response.usage.cache_creation_input_tokens != null && {
-            cacheWriteTokens: response.usage.cache_creation_input_tokens,
-          }),
-        },
+        /* Validated, not destructured. See src/sdk-usage.ts: the SDK is a peer
+           at ">=0.117.1 <1", so the version that runs may not be the version
+           this was compiled against. */
+        usage: parseSdkUsage(response.usage, `judge "${model}"`),
       };
     },
   };
