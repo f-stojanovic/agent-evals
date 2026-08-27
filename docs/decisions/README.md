@@ -24,6 +24,7 @@
 | [020](020-readme-figures-are-generated.md) | README figures are generated, not transcribed | Accepted |
 | [021](021-only-a-human-may-assign-a-label.md) | A model may write the inputs and the outputs; only a human may assign the label | Accepted — the semantic pairs are knowingly still in breach |
 | [022](022-a-gate-must-not-screen-on-a-summary.md) | A case mean is a summary, and a gate must not screen on a summary | Accepted — baseline v3; the miss and the catch are both measured |
+| [023](023-this-package-is-consumed-as-a-git-dependency.md) | This package is consumed as a git dependency, and that has to be packaged for | Accepted — both install probes measured; the GitHub path itself is still unobserved |
 
 ## Two axes: Status and Evidence
 
