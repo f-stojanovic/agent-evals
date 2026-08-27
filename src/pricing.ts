@@ -17,7 +17,7 @@
  * dated beats live and unattributable.
  */
 
-import type { CostBreakdown, Usage } from './types.js';
+import type { Cost, CostBreakdown, CostGap, Usage } from './types.js';
 
 export type ModelPrice = {
   /** USD per million input tokens. */
@@ -86,16 +86,40 @@ export function priceFor(model: string): ModelPrice | undefined {
 }
 
 /**
- * Prices one usage record.
+ * Prices one usage record, or says why it cannot.
  *
- * Returns `undefined` for an unknown model rather than guessing zero. A
- * silently free model would make a suite look cheaper than it is, which is the
- * wrong direction for a number people use to decide what they can afford to
- * run — the report says the model is unpriced instead.
+ * TOTAL BY CONSTRUCTION. It never throws and never returns a number it did not
+ * compute. Throwing was the obvious alternative and is rejected in ADR 026: this
+ * runs inside per-case aggregation, so a throw would destroy the report for a
+ * whole run at exactly the moment the reader needs it, over an accounting field.
+ *
+ * `unpriced` rather than zero for an unknown model: a silently free model makes
+ * a suite look cheaper than it is, which is the wrong direction for a number
+ * people use to decide what they can afford to run.
  */
-export function costOf(usage: Usage, model: string): CostBreakdown | undefined {
+export function costOf(usage: Usage, model: string): Cost {
   const price = priceFor(model);
-  if (price === undefined) return undefined;
+  if (price === undefined) {
+    return { kind: 'unknown', gaps: [{ kind: 'unpriced', model }] };
+  }
+
+  /* Checked here as well as at the SDK boundary (src/sdk-usage.ts), and the
+     redundancy is deliberate. `costOf` is exported: a consumer can hand it a
+     Usage this package never parsed — assembled by hand, replayed from a
+     fixture, or produced by their own subject — and "the caller validated it"
+     is not a guarantee this function can rely on. */
+  const bad = badCounts(usage);
+  if (bad.length > 0) {
+    return {
+      kind: 'unknown',
+      gaps: [
+        {
+          kind: 'uncomputable',
+          detail: `${model}: ${bad.join('; ')}`,
+        },
+      ],
+    };
+  }
 
   const inputUsd = (usage.inputTokens / 1_000_000) * price.inputPerMTok;
   const outputUsd = (usage.outputTokens / 1_000_000) * price.outputPerMTok;
@@ -109,15 +133,72 @@ export function costOf(usage: Usage, model: string): CostBreakdown | undefined {
       : undefined;
 
   return {
-    inputUsd,
-    outputUsd,
-    ...(cacheReadUsd !== undefined && { cacheReadUsd }),
-    ...(cacheWriteUsd !== undefined && { cacheWriteUsd }),
-    totalUsd: inputUsd + outputUsd + (cacheReadUsd ?? 0) + (cacheWriteUsd ?? 0),
+    kind: 'known',
+    breakdown: {
+      inputUsd,
+      outputUsd,
+      ...(cacheReadUsd !== undefined && { cacheReadUsd }),
+      ...(cacheWriteUsd !== undefined && { cacheWriteUsd }),
+      totalUsd: inputUsd + outputUsd + (cacheReadUsd ?? 0) + (cacheWriteUsd ?? 0),
+    },
   };
 }
 
-export function addCost(a: CostBreakdown, b: CostBreakdown): CostBreakdown {
+/** Every token count that is not a usable non-negative finite number. */
+function badCounts(usage: Usage): string[] {
+  const problems: string[] = [];
+  const check = (label: string, value: number | undefined, required: boolean): void => {
+    if (value === undefined) {
+      if (required) problems.push(`${label} is missing`);
+      return;
+    }
+    if (!Number.isFinite(value)) problems.push(`${label} is ${String(value)}`);
+    else if (value < 0) problems.push(`${label} is negative (${value})`);
+  };
+  check('inputTokens', usage.inputTokens, true);
+  check('outputTokens', usage.outputTokens, true);
+  check('cacheReadTokens', usage.cacheReadTokens, false);
+  check('cacheWriteTokens', usage.cacheWriteTokens, false);
+  return problems;
+}
+
+/**
+ * Adds two costs, and an unknown one poisons the sum.
+ *
+ * THIS IS THE HALF THAT WAS ACTUALLY WRONG IN PRACTICE. The previous
+ * `mergeCost` treated an unpriced component as absent — `if (a === undefined)
+ * return b` — so a suite with a priced subject and an unpriced judge reported
+ * the subject's cost as the suite total, with nothing anywhere saying a
+ * component had been dropped. Measured before this change: merging a priced
+ * $0.0600 with an unpriced component returned $0.0600.
+ *
+ * A sum that silently omits a term is not a smaller number, it is a different
+ * claim. So any gap makes the result `unknown`, carrying every gap and the
+ * portion that WAS priced.
+ */
+export function addCost(a: Cost, b: Cost): Cost {
+  if (a.kind === 'known' && b.kind === 'known') {
+    return { kind: 'known', breakdown: addBreakdown(a.breakdown, b.breakdown) };
+  }
+
+  const gaps: CostGap[] = [
+    ...(a.kind === 'unknown' ? a.gaps : []),
+    ...(b.kind === 'unknown' ? b.gaps : []),
+  ];
+  const portions = [
+    a.kind === 'known' ? a.breakdown : a.pricedPortion,
+    b.kind === 'known' ? b.breakdown : b.pricedPortion,
+  ].filter((p): p is CostBreakdown => p !== undefined);
+
+  const pricedPortion = portions.reduce<CostBreakdown | undefined>(
+    (total, p) => (total === undefined ? p : addBreakdown(total, p)),
+    undefined,
+  );
+
+  return { kind: 'unknown', gaps, ...(pricedPortion !== undefined && { pricedPortion }) };
+}
+
+function addBreakdown(a: CostBreakdown, b: CostBreakdown): CostBreakdown {
   const cacheReadUsd = optionalSum(a.cacheReadUsd, b.cacheReadUsd);
   const cacheWriteUsd = optionalSum(a.cacheWriteUsd, b.cacheWriteUsd);
   return {
@@ -129,7 +210,10 @@ export function addCost(a: CostBreakdown, b: CostBreakdown): CostBreakdown {
   };
 }
 
-export const ZERO_COST: CostBreakdown = { inputUsd: 0, outputUsd: 0, totalUsd: 0 };
+export const ZERO_COST: Cost = {
+  kind: 'known',
+  breakdown: { inputUsd: 0, outputUsd: 0, totalUsd: 0 },
+};
 
 function optionalSum(a: number | undefined, b: number | undefined): number | undefined {
   if (a === undefined && b === undefined) return undefined;

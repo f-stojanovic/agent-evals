@@ -13,11 +13,11 @@ import { dirname, join } from 'node:path';
 import { extractStructured } from './scorers/extract.js';
 import { applicableScorers } from './scorers/registry.js';
 import { invokeScorer } from './scorers/invoke.js';
-import { addCost, costOf, ZERO_COST } from './pricing.js';
+import { addCost, costOf } from './pricing.js';
 import { collectUncalibrated } from './uncalibrated.js';
 import type {
   CaseResult,
-  CostBreakdown,
+  Cost,
   EvalCase,
   ExtractionOutcome,
   LatencyAggregate,
@@ -94,8 +94,8 @@ export type RunSummary = SuiteResult & {
   viaDistribution: Readonly<Record<string, number>>;
   /** Split out because grading is usually the expensive half and a cost that
    *  is not itemised does not get optimised. */
-  subjectCost?: CostBreakdown;
-  judgeCost?: CostBreakdown;
+  subjectCost?: Cost;
+  judgeCost?: Cost;
 };
 
 /* ------------------------------------------------------------------ *
@@ -206,8 +206,8 @@ async function runCase(args: CaseArgs): Promise<CaseResult> {
   const vias: ExtractionOutcome[] = [];
   const scoresBySample: Score[][] = [];
   let usage: Usage = { inputTokens: 0, outputTokens: 0 };
-  let subjectCost: CostBreakdown | undefined;
-  let judgeCost: CostBreakdown | undefined;
+  let subjectCost: Cost | undefined;
+  let judgeCost: Cost | undefined;
   let lastOutput: SubjectOutput | undefined;
   let failure: { message: string; stack?: string } | undefined;
 
@@ -503,7 +503,7 @@ function summarise(args: {
     inputTokens: 0,
     outputTokens: 0,
   });
-  const cost = results.reduce<CostBreakdown | undefined>(
+  const cost = results.reduce<Cost | undefined>(
     (total, r) => mergeCost(total, r.cost),
     undefined,
   );
@@ -517,12 +517,12 @@ function summarise(args: {
      derived the subject's share by subtracting the judge's from the total,
      which meant any scorer whose meta happened to look judge-shaped skewed
      both numbers at once and in opposite directions. */
-  const judgeCost = results.reduce<CostBreakdown | undefined>(
+  const judgeCost = results.reduce<Cost | undefined>(
     (total, r) =>
-      r.scores.reduce<CostBreakdown | undefined>((c, s) => mergeCost(c, judgeCostOf(s)), total),
+      r.scores.reduce<Cost | undefined>((c, s) => mergeCost(c, judgeCostOf(s)), total),
     undefined,
   );
-  const subjectCost = results.reduce<CostBreakdown | undefined>(
+  const subjectCost = results.reduce<Cost | undefined>(
     (total, r) => mergeCost(total, r.subjectCost),
     undefined,
   );
@@ -660,10 +660,11 @@ function sumOptional(a: number | undefined, b: number | undefined): number | und
   return (a ?? 0) + (b ?? 0);
 }
 
-function mergeCost(
-  a: CostBreakdown | undefined,
-  b: CostBreakdown | undefined,
-): CostBreakdown | undefined {
+/* `undefined` here means "no component at all" — nothing ran, so there is
+   nothing to account for. That is different from a component that ran and could
+   not be priced, which is a `Cost` of kind `unknown` and which `addCost`
+   propagates rather than skips. */
+function mergeCost(a: Cost | undefined, b: Cost | undefined): Cost | undefined {
   if (a === undefined) return b;
   if (b === undefined) return a;
   return addCost(a, b);
@@ -671,9 +672,24 @@ function mergeCost(
 
 /** Typed fields on `Score`, priced against the judge's own model rather than
  *  the subject's. */
-function judgeCostOf(score: Score): CostBreakdown | undefined {
+function judgeCostOf(score: Score): Cost | undefined {
   if (score.judgeUsage === undefined) return undefined;
-  if (score.judgeModel === undefined) return ZERO_COST;
+  /* Tokens were spent and nothing says on what. This used to return ZERO_COST,
+     which asserts the grading was free — a claim nobody established, about the
+     one number this repository exists to make attributable. */
+  if (score.judgeModel === undefined) {
+    return {
+      kind: 'unknown',
+      gaps: [
+        {
+          kind: 'uncomputable',
+          detail:
+            `scorer "${score.scorer}" reported judgeUsage without a judgeModel, ` +
+            `so the tokens it spent cannot be priced`,
+        },
+      ],
+    };
+  }
   return costOf(score.judgeUsage, score.judgeModel);
 }
 

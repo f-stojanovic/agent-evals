@@ -436,6 +436,61 @@ export type CostBreakdown = {
 };
 
 /**
+ * Why some part of a cost is not known.
+ *
+ * Two reasons, kept apart for the same reason {@link ExtractionOutcome} keeps
+ * `unreadable` apart from `ambiguous`: they are different findings with
+ * different responses.
+ *
+ *   - `unpriced` — the run happened and the tokens are known; this build has no
+ *     price for that model. A fact about `PRICES`, fixed by adding a row.
+ *   - `uncomputable` — the tokens themselves are not known. A fact about what
+ *     arrived, and it means a number somewhere upstream is missing rather than
+ *     zero.
+ *
+ * Collapsing them would tell a reader "not priced (no price table entry)" when
+ * the truth was that the accounting never arrived, which is a report asserting
+ * something it did not establish.
+ */
+export type CostGap =
+  | { kind: 'unpriced'; model: string }
+  | { kind: 'uncomputable'; detail: string };
+
+/**
+ * A cost, or an account of why there isn't one.
+ *
+ * WHY THIS IS A UNION AND NOT `CostBreakdown | undefined`
+ * ------------------------------------------------------
+ * It used to be the latter, and `undefined` had to carry two meanings that
+ * behave differently. Worse, the arithmetic had a third state nobody named: a
+ * missing token count made `inputUsd` `NaN` while `outputUsd` stayed a real
+ * number, so `costOf` returned an object where one field was a measurement and
+ * another was not. Serialised, `NaN` becomes `null`, and a null cost in a run
+ * artifact is indistinguishable from a free one.
+ *
+ * THE RULE THIS TYPE EXISTS TO ENFORCE: an unknown cost must never be
+ * representable as a number. There is no arm here that holds a partially
+ * computed breakdown as if it were the answer. `unknown` may carry
+ * `pricedPortion` — the part that IS known — but it is a separate field with a
+ * name that cannot be mistaken for a total, and the renderer prints the word
+ * before it prints any figure.
+ *
+ * `undefined` still means something, and something narrower than before: no
+ * cost component existed at all, because nothing ran.
+ *
+ * See ADR 026.
+ */
+export type Cost =
+  | { kind: 'known'; breakdown: CostBreakdown }
+  | {
+      kind: 'unknown';
+      gaps: CostGap[];
+      /** What could be priced, when some components could and others could not.
+       *  Never a total. Never rendered without the word "unknown" first. */
+      pricedPortion?: CostBreakdown;
+    };
+
+/**
  * Latency distribution across a suite.
  *
  * Percentiles rather than a mean: agent latency is heavy-tailed, and the mean
@@ -598,10 +653,10 @@ export type CaseResult = {
   latencyMs: number;
   usage: Usage;
   /** Subject and judge combined. */
-  cost?: CostBreakdown;
+  cost?: Cost;
   /** The subject's share alone, recorded rather than derived by subtracting
    *  the judge's from the total. */
-  subjectCost?: CostBreakdown;
+  subjectCost?: Cost;
 };
 
 /**
@@ -623,7 +678,7 @@ export type SuiteResult = {
   totals: SuiteTotals;
   /** Suite-wide token sum. Individual usage stays on each case. */
   usage: Usage;
-  cost?: CostBreakdown;
+  cost?: Cost;
   latency: LatencyAggregate;
   /** The CI gate's answer. Derived from totals plus the baseline comparison,
    *  never set directly by a scorer. */

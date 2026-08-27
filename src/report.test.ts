@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { exitCode, formatReport } from './report.js';
 import type { BaselineComparison } from './baseline.js';
 import type { RunSummary } from './runner.js';
-import type { CaseResult } from './types.js';
+import type { CaseResult, Cost } from './types.js';
 
 function caseResult(overrides: Partial<CaseResult> & { caseId: string }): CaseResult {
   return {
@@ -91,9 +91,12 @@ describe('formatReport', () => {
   it('splits subject cost from judge cost', () => {
     const rendered = formatReport({
       run: run({
-        cost: { inputUsd: 1, outputUsd: 2, totalUsd: 3 },
-        subjectCost: { inputUsd: 0.5, outputUsd: 0.5, totalUsd: 1 },
-        judgeCost: { inputUsd: 0.5, outputUsd: 1.5, totalUsd: 2 },
+        cost: { kind: 'known', breakdown: { inputUsd: 1, outputUsd: 2, totalUsd: 3 } },
+        subjectCost: {
+          kind: 'known',
+          breakdown: { inputUsd: 0.5, outputUsd: 0.5, totalUsd: 1 },
+        },
+        judgeCost: { kind: 'known', breakdown: { inputUsd: 0.5, outputUsd: 1.5, totalUsd: 2 } },
       }),
       comparison: clean,
       models: {},
@@ -104,8 +107,90 @@ describe('formatReport', () => {
     expect(rendered).toContain('subject $1.0000, judge $2.0000');
   });
 
-  it('says so when a model has no price entry rather than printing $0', () => {
-    expect(formatReport({ run: run(), comparison: clean, models: {} })).toContain('not priced');
+  /**
+   * THE DISTINCTION THIS SECTION EXISTS FOR.
+   *
+   * A report that computes "known" apart from "unknown" and then prints both
+   * the same way has not made the distinction — it has only paid for it. These
+   * assert the four outcomes are visibly different to a reader:
+   *
+   *   $0.0000  known, and zero — this really was free
+   *   ?        something is not known
+   *   —        nothing ran
+   *
+   * and that an unknown total never appears as a bare figure.
+   */
+  describe('cost', () => {
+    const rendered = (cost?: Cost, caseCost?: Cost): string =>
+      formatReport({
+        run: run({
+          ...(cost !== undefined && { cost }),
+          results: [caseResult({ caseId: 'a', ...(caseCost !== undefined && { cost: caseCost }) })],
+        }),
+        comparison: clean,
+        models: {},
+      });
+
+    it('distinguishes a genuinely free run from an unknown one', () => {
+      const free = rendered({ kind: 'known', breakdown: { inputUsd: 0, outputUsd: 0, totalUsd: 0 } });
+      expect(free).toContain('$0.0000');
+      expect(free).not.toContain('unknown');
+    });
+
+    it('says which model has no price entry, rather than "not priced" for everything', () => {
+      const out = rendered({ kind: 'unknown', gaps: [{ kind: 'unpriced', model: 'mystery-1' }] });
+      expect(out).toContain('cost: **unknown**');
+      expect(out).toContain('no price table entry for "mystery-1"');
+    });
+
+    it('reports an uncomputable cost as its own finding, not as a pricing gap', () => {
+      const out = rendered({
+        kind: 'unknown',
+        gaps: [{ kind: 'uncomputable', detail: 'judge: inputTokens is missing' }],
+      });
+      expect(out).toContain('cost: **unknown**');
+      expect(out).toContain('inputTokens is missing');
+      /* The old renderer said this, and it would have been a diagnosis nobody
+         made: the price table was never the problem here. */
+      expect(out).not.toContain('no price table entry');
+    });
+
+    it('never prints an unknown total as a figure, even when part was priced', () => {
+      const out = rendered({
+        kind: 'unknown',
+        gaps: [{ kind: 'unpriced', model: 'mystery-1' }],
+        pricedPortion: { inputUsd: 0.01, outputUsd: 0.05, totalUsd: 0.06 },
+      });
+      /* The figure is present — dropping what the run does know would be its own
+         dishonesty — but it is labelled a portion and the line leads with the
+         word. */
+      expect(out).toContain('cost: **unknown**');
+      expect(out).toContain('only $0.0600 of it could be priced');
+      expect(out).not.toContain('cost: **$0.0600**');
+    });
+
+    it('marks an unknown case cost with ? and an absent one with a dash', () => {
+      const unknown = rendered(undefined, { kind: 'unknown', gaps: [{ kind: 'unpriced', model: 'm' }] });
+      /* The row for case `a`, not the totals block. */
+      /* The data row for case `a`, not the totals block. The id column is
+         right-padded, so this matches the cell rather than a literal "| a ". */
+      const dataRow = (rendered_: string): string =>
+        rendered_.split('\n').find((line) => /^\|\s+a\s+\|/.test(line)) ?? '';
+
+      const row = dataRow(unknown);
+      expect(row).toContain('?');
+      expect(row).not.toContain('$');
+
+      const absentRow = dataRow(rendered(undefined, undefined));
+      expect(absentRow).not.toContain('?');
+      expect(absentRow).not.toContain('$');
+    });
+
+    it('says nothing ran, rather than blaming the price table, when no cost exists', () => {
+      const out = rendered(undefined, undefined);
+      expect(out).toContain('no priced component ran');
+      expect(out).not.toContain('no price table entry');
+    });
   });
 
   it('lists the models and their revisions', () => {

@@ -21,6 +21,8 @@ export type {
   Extraction,
   ExtractionRoute,
   CostBreakdown,
+  Cost,
+  CostGap,
   LatencyAggregate,
   SuiteTotals,
   CaseResult,

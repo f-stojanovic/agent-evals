@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { PRICES, costOf, priceFor } from './pricing.js';
+import type { Cost, CostBreakdown } from './types.js';
 
 describe('the price table', () => {
   it('dates and attributes every entry', () => {
@@ -19,13 +20,21 @@ describe('the price table', () => {
   });
 });
 
+/** Narrows to the priced arm, failing the test if it is not. Keeps every
+ *  assertion below readable without `as` casts. */
+function known(cost: Cost): CostBreakdown {
+  if (cost.kind !== 'known') throw new Error(`expected a known cost, got ${JSON.stringify(cost)}`);
+  return cost.breakdown;
+}
+
 describe('costOf', () => {
   it('prices input and output separately', () => {
     const cost = costOf({ inputTokens: 1_000_000, outputTokens: 1_000_000 }, 'claude-opus-5');
 
-    expect(cost?.inputUsd).toBeCloseTo(5);
-    expect(cost?.outputUsd).toBeCloseTo(25);
-    expect(cost?.totalUsd).toBeCloseTo(30);
+    expect(cost.kind).toBe('known');
+    expect(known(cost).inputUsd).toBeCloseTo(5);
+    expect(known(cost).outputUsd).toBeCloseTo(25);
+    expect(known(cost).totalUsd).toBeCloseTo(30);
   });
 
   it('prices cache reads and writes against the input rate', () => {
@@ -39,25 +48,35 @@ describe('costOf', () => {
       'claude-opus-5',
     );
 
-    expect(cost?.cacheReadUsd).toBeCloseTo(0.5);
-    expect(cost?.cacheWriteUsd).toBeCloseTo(6.25);
+    expect(known(cost).cacheReadUsd).toBeCloseTo(0.5);
+    expect(known(cost).cacheWriteUsd).toBeCloseTo(6.25);
   });
 
   it('omits cache costs when the usage does not report them', () => {
     const cost = costOf({ inputTokens: 10, outputTokens: 10 }, 'claude-opus-5');
 
-    expect(cost).not.toHaveProperty('cacheReadUsd');
+    expect(known(cost)).not.toHaveProperty('cacheReadUsd');
   });
 
-  it('returns undefined for an unknown model rather than guessing zero', () => {
+  it('reports an unknown model as unpriced rather than guessing zero', () => {
     /* A silently free model makes a suite look cheaper than it is, which is
        the wrong direction for a number people budget against. */
-    expect(costOf({ inputTokens: 1000, outputTokens: 1000 }, 'some-other-model')).toBeUndefined();
+    const cost = costOf({ inputTokens: 1000, outputTokens: 1000 }, 'some-other-model');
+
+    expect(cost).toEqual({
+      kind: 'unknown',
+      gaps: [{ kind: 'unpriced', model: 'some-other-model' }],
+    });
+    /* And it carries no figure at all, so nothing downstream can add it in. */
+    expect(cost).not.toHaveProperty('pricedPortion');
   });
 
   it('prices a local model at zero, explicitly', () => {
     const cost = costOf({ inputTokens: 1_000_000, outputTokens: 0 }, 'Xenova/all-MiniLM-L6-v2');
 
-    expect(cost?.totalUsd).toBe(0);
+    /* `known` and zero, which is a different claim from `unknown` — the report
+       prints $0.0000 for this and `?` for that. */
+    expect(cost.kind).toBe('known');
+    expect(known(cost).totalUsd).toBe(0);
   });
 });

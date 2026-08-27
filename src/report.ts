@@ -15,6 +15,7 @@ import type { ProvenanceSummary } from './provenance.js';
 import type { BaselineComparison, CaseComparison } from './baseline.js';
 import type { LockedModel } from './models-lock.js';
 import type { RunSummary } from './runner.js';
+import type { Cost, CostGap } from './types.js';
 
 export const ARTIFACT_DIR = '.artifacts';
 
@@ -54,7 +55,7 @@ export function formatReport({ run, comparison, models, provenance }: ReportInpu
          prompt — so the envelope tracks the INPUT, not the instruction, and a
          suite total would have averaged that finding away. */
       formatCaseVias(result.vias),
-      result.cost === undefined ? '—' : `$${result.cost.totalUsd.toFixed(4)}`,
+      formatCostCell(result.cost),
       String(result.latencyMs),
     ];
   });
@@ -236,14 +237,80 @@ function formatCaseVias(vias: readonly string[]): string {
   return ordered.map(([via, count]) => `${via} ${count}/${vias.length}`).join(', ');
 }
 
+/**
+ * The table cell for one case's cost.
+ *
+ * THREE OUTCOMES, THREE GLYPHS, and the whole point is that they cannot be
+ * confused:
+ *
+ *   `$0.0000`  the cost is known and it is zero — this really was free
+ *   `?`        something about it is not known
+ *   `—`        nothing ran, so there is nothing to account for
+ *
+ * `?` never carries a figure, even when part of the cost was priced. A cell is
+ * four characters wide and a reader scans it; a number in it is a number they
+ * will read as the answer. The priced portion is reported in the totals, where
+ * there is room to say what it is.
+ */
+function formatCostCell(cost: Cost | undefined): string {
+  if (cost === undefined) return '—';
+  return cost.kind === 'known' ? `$${cost.breakdown.totalUsd.toFixed(4)}` : '?';
+}
+
+/** A gap, in one clause a reader can act on. */
+function describeGap(gap: CostGap): string {
+  return gap.kind === 'unpriced'
+    ? `no price table entry for "${gap.model}"`
+    : gap.detail;
+}
+
+/**
+ * The suite cost lines.
+ *
+ * AN UNKNOWN TOTAL LEADS WITH THE WORD, NOT WITH A NUMBER. The previous version
+ * printed `- cost: not priced (no price table entry for this model)` for every
+ * absent cost, which said one specific thing about the price table even when the
+ * real cause was that the token counts never arrived — a report asserting a
+ * diagnosis it had not made.
+ *
+ * When part of the run WAS priced, that figure is still worth having, so it is
+ * printed. It is printed after the word "unknown", labelled as a portion, and
+ * never formatted as the total.
+ */
 function costLines(run: RunSummary): string[] {
-  if (run.cost === undefined) return ['- cost: not priced (no price table entry for this model)'];
-  const subject = run.subjectCost?.totalUsd ?? 0;
-  const judge = run.judgeCost?.totalUsd ?? 0;
+  const tokens = `- tokens: ${run.usage.inputTokens} in / ${run.usage.outputTokens} out`;
+
+  if (run.cost === undefined) {
+    return ['- cost: no priced component ran', tokens];
+  }
+
+  if (run.cost.kind === 'unknown') {
+    const gaps = run.cost.gaps.map(describeGap);
+    const unique = [...new Set(gaps)];
+    const portion =
+      run.cost.pricedPortion === undefined
+        ? 'nothing in this run could be priced'
+        : `only $${run.cost.pricedPortion.totalUsd.toFixed(4)} of it could be priced`;
+    return [
+      `- cost: **unknown** — ${portion}`,
+      ...unique.map((gap) => `  - ${gap}`),
+      tokens,
+    ];
+  }
+
   return [
-    `- cost: **$${run.cost.totalUsd.toFixed(4)}** — subject $${subject.toFixed(4)}, judge $${judge.toFixed(4)}`,
-    `- tokens: ${run.usage.inputTokens} in / ${run.usage.outputTokens} out`,
+    `- cost: **$${run.cost.breakdown.totalUsd.toFixed(4)}** — ` +
+      `subject ${componentUsd(run.subjectCost)}, judge ${componentUsd(run.judgeCost)}`,
+    tokens,
   ];
+}
+
+/** A component of a known total. `unknown` cannot appear here — a total is only
+ *  `known` when every component was — but a component may legitimately be
+ *  absent, which is not the same as free. */
+function componentUsd(cost: Cost | undefined): string {
+  if (cost === undefined) return 'none';
+  return cost.kind === 'known' ? `$${cost.breakdown.totalUsd.toFixed(4)}` : 'unknown';
 }
 
 function formatViaDistribution(run: RunSummary): string[] {

@@ -450,6 +450,9 @@ describe('judge cost through sampling', () => {
     /* Averaging used to drop these, so a run that spent real money on grading
        reported $0.0000 of judge cost while the per-case totals were right. */
     expect(run.results[0]?.scores[0]?.judgeUsage).toEqual({ inputTokens: 300, outputTokens: 60 });
-    expect(run.judgeCost?.totalUsd).toBeGreaterThan(0);
+    expect(run.judgeCost?.kind).toBe('known');
+    expect(
+      run.judgeCost?.kind === 'known' ? run.judgeCost.breakdown.totalUsd : 0,
+    ).toBeGreaterThan(0);
   });
 });
