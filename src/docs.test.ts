@@ -369,6 +369,105 @@ describe('these checks', () => {
   });
 });
 
+/* ------------------------------------------------------------------ *
+ * C6 — src/fixtures.ts does not restate the provenance data
+ * ------------------------------------------------------------------ */
+
+describe('fixture provenance claims in prose', () => {
+  /**
+   * THE DEFECT, WHICH HAPPENED TWICE IN THE SAME FILE.
+   *
+   * `src/fixtures.ts` claimed the fixtures were "real responses from a real
+   * model" while they were hand-authored in the same session — false when
+   * written, false for two commits, and the reason ADR 015 made provenance a
+   * required typed field. It was corrected to say all of them were
+   * hand-authored, which was true when written and became false when the
+   * fixtures were re-captured from claude-sonnet-5. It then sat contradicting
+   * its own data, and the tally the report prints on every run, inside the file
+   * that exists to explain why that must not happen. The five checks above all
+   * walked past it, because none of them compares prose to data.
+   *
+   * WHAT THIS CHECKS, AND WHY IT IS A BAN RATHER THAN A COMPARISON.
+   * The obvious check is "find the claim, compare it to the fixtures". I built
+   * that first and threw it away, and the reason is worth recording because it
+   * is an argument about mechanical documentation checks generally.
+   *
+   * To compare a claim you must first recognise one, and recognising a claim in
+   * English is not a small problem. That version flagged four things that are
+   * not claims — `kind: 'hand-authored'` in provenance.ts's schema, and sample
+   * data in three test files — which was fixed by reading comments only. It
+   * then flagged `formatProvenance`'s doc comment, because sentences were being
+   * cut across comment blocks, which was fixed by splitting per block. It then
+   * flagged this, which is correct English and not a tally:
+   *
+   *     "Every fixture and every calibration case carries this field ... a
+   *      hand-authored entry has no place to put a model name"
+   *
+   * Separating that from "all of them are hand-authored" needs the parser to
+   * know which noun the adjective predicates. Requiring a copula does it, and
+   * then the ORIGINAL defect — "the recorded outputs are real responses" —
+   * slips through, because there the kind precedes the verb. Four rounds of
+   * tuning, and the honest reading is that each round narrowed what the check
+   * can see while leaving its green tick looking exactly as reassuring. That is
+   * the failure ADR 018 was written about.
+   *
+   * So the rule is not "your tally must be right", it is "do not state a tally
+   * here". The report already prints it from the data on every run, and
+   * `provenance` is a required field the schema enforces, so a tally in this
+   * comment has only two possible states: redundant, or wrong.
+   *
+   * QUOTED TEXT IS EXEMPT, and that exemption is load-bearing. This repository
+   * documents its corrections by quoting the sentence it got wrong; a rule that
+   * could not tell a quotation from an assertion would forbid this file from
+   * describing its own history, including the paragraph above.
+   */
+  it('the module header of src/fixtures.ts states no provenance kind', () => {
+    const file = join(SRC, 'fixtures.ts');
+    const text = sources.get(file);
+    if (text === undefined) throw new Error(`${relative(file)} not found`);
+
+    /* THE MODULE HEADER ONLY — the first block comment — and not every comment
+       in the file. Both defects lived here, and this is the only place a
+       reader looks for "what are these fixtures". Elsewhere in the same file
+       "recorded" is an ordinary English verb: `fixtureJudge` replays recorded
+       verdicts, `fixtureSubject` errors on a missing recording. Banning the
+       word outright flagged seven such uses, none of them a claim about
+       anything. */
+    const header = /^\s*\/\*[\s\S]*?\*\//.exec(text)?.[0];
+    if (header === undefined) throw new Error(`${relative(file)} has no module header comment`);
+
+    expectNonEmptyCorpus([header], `no module header parsed out of ${relative(file)}`);
+
+    /* Double-quoted spans are quotations of what was once written, not claims
+       made now. Backticks are NOT exempt: the second defect was written as
+       "all of them are `hand-authored`", backticks and all. */
+    const asserted = header.replace(/"[^"]*"/g, '""');
+
+    /* `hand-authored` ONLY, not `recorded`. The round that banned both flagged
+       three sentences in this very header — "Replaying recorded outputs", "the
+       per-push run replays outputs recorded once and committed" — because
+       `recorded` is simultaneously a provenance kind and the ordinary English
+       verb for what this file does. `hand-authored` is a coined compound that
+       exists in this repository only as a provenance kind, so banning it has no
+       legitimate casualty.
+
+       WHAT THAT COSTS, stated rather than left implicit: this catches the
+       SECOND defect's shape — a stale tally naming a kind — and not the
+       first's. Version one said the outputs were "real responses from a real
+       model" and named no kind at all; nothing here would have seen it. The
+       recurring shape is the stale tally, because fixtures get re-captured and
+       sentences about them do not, so that is the one worth a guard. The other
+       is why `provenance` is a required typed field rather than a sentence
+       (ADR 015), which is a stronger fix than any check on prose. */
+    const stated = [...asserted.matchAll(/\bhand-authored\b/gi)].map((m) => m[0]);
+
+    expect({ where: `${relative(file)} header`, stated }).toEqual({
+      where: `${relative(file)} header`,
+      stated: [],
+    });
+  });
+});
+
 /** Status plus its wrapped continuation lines, stopping at Evidence or a
  *  heading — supersession notes routinely wrap. */
 function statusBlock(text: string): string {

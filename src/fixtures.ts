@@ -17,19 +17,34 @@
  *
  * WHERE THE DATA CAME FROM IS A FIELD, NOT A SENTENCE
  * ---------------------------------------------------
- * Every fixture carries a required `provenance`. As of this writing all of them
- * are `hand-authored`, and the report says so on every run.
+ * Every fixture carries a required `provenance`, and the report prints the
+ * tally on every run. THIS COMMENT DELIBERATELY DOES NOT REPEAT THAT TALLY —
+ * read the run output, or `evals/fixtures/*.yaml`, both of which are the data
+ * rather than a description of it.
  *
- * This comment used to claim the opposite — "the recorded outputs are real
- * responses from a real model, frozen" — which was false when it was written
- * and stayed false for two commits. See ADR 015. The lesson is not that the
- * comment was careless; it is that a comment is the wrong place to assert a
- * fact nobody can check from the file.
+ * THAT OMISSION IS THE POINT, AND IT IS THE THIRD VERSION OF THIS PARAGRAPH.
+ * Version one said "the recorded outputs are real responses from a real model,
+ * frozen" while they had been written by hand in the same session — false when
+ * it was written, false for two commits, and the reason ADR 015 made
+ * provenance a required typed field. Version two corrected it to "as of this
+ * writing all of them are `hand-authored`", which was true on the day and
+ * became false the moment the fixtures were re-captured from a live run; it
+ * then sat contradicting its own data — and the tally printed by every run —
+ * inside the file that exists to explain why that must not happen.
  *
- * Hand-authored fixtures are still worth having: they make the per-push gate
- * deterministic and free. They just do not exercise the format distribution a
- * real model produces — the live run of 2026-08-19 emitted a markdown fence on
- * two thirds of samples, while every fixture here is bare JSON.
+ * Twice is a pattern with a stable cause: a sentence describing data that
+ * lives elsewhere has no reason to be revisited when the data changes, and
+ * nothing notices. So the sentence is gone rather than corrected a third time,
+ * and `docs.test.ts` fails the build if this header states a provenance kind
+ * at all outside a quotation. The rule is a ban rather than a comparison, and
+ * the reasoning for that — four rounds of trying to recognise a claim in
+ * English, and what each round quietly stopped seeing — is recorded in the
+ * check itself.
+ *
+ * What is durably true and worth saying: a fixture holds the subject still, so
+ * the per-push gate is deterministic, free, and works on a fork. What it
+ * cannot do is tell you the model still behaves this way — that is the live
+ * run's job (ADR 013).
  */
 
 import { readdir, readFile } from 'node:fs/promises';
