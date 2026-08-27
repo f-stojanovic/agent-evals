@@ -35,7 +35,9 @@ Evidence: TWO INSTALL PROBES, 2026-08-27, on this machine, into
           `date` of 09:16:37 the same minute — and `import('agent-evals')`
           succeeded. Control, `--ignore-scripts` against `main` with its own
           cold cache: "added 66 packages", and `LICENSE README.md package.json`.
-          So the flag does not suppress `prepare` on the git path here.
+          So on npm 10.9.4 the flag did not suppress `prepare` on the git
+          path. No mechanism is claimed for that and no npm documentation or
+          issue was read; it is two commands and their output.
           NOT MEASURED: a real `github:f-stojanovic/agent-evals` install. Nothing
           has been pushed, so the GitHub path is inferred from the local git path
           rather than observed. What would count: one `npm i
@@ -119,21 +121,35 @@ it again. On a constrained builder that is a real cost charged to somebody who
 never chose it. Publishing to npm would remove it; not publishing is the
 standing decision, so this is the price of that.
 
-**`--ignore-scripts` does not break this, which I did not expect.** The obvious
-worry about a build hook is the consumer who installs with `--ignore-scripts`,
-either by choice or by a global npm config. MEASURED, and the worry is
-unfounded on npm 10.9.4: `npm i --ignore-scripts` against this branch, with a
-cold cache directory so no earlier probe's tarball could be reused, still
-produced `dist/` — `dist/index.js` carried an mtime from the install itself —
-and `import('agent-evals')` succeeded. The control run, `--ignore-scripts`
-against `main` with its own cold cache, gave the three-file directory. npm
-treats building a git dependency as part of preparing the package rather than as
-a consumer-side lifecycle script, and `--ignore-scripts` does not reach it.
+**`--ignore-scripts` did not break this ON NPM 10.9.4. That is an observation,
+not a contract, and the distinction is the whole of this paragraph.**
 
-This is recorded because it is the opposite of what I assumed while writing the
-paragraph it replaces, and because it is version-specific. It has not been
-checked on any other npm, and a future npm that honours the flag here would
-reintroduce the silent three-file install with no signal at all.
+The obvious worry about a build hook is the consumer who installs with
+`--ignore-scripts`, by choice or by a global npm config. OBSERVED, npm 10.9.4 /
+Node 22.22.1: `npm i --ignore-scripts` against this branch, with a cold cache
+directory so no earlier probe's tarball could be reused, still produced `dist/`
+— `dist/index.js` carried an mtime from the install itself — and
+`import('agent-evals')` succeeded. Control, `--ignore-scripts` against `main`
+with its own cold cache: the three-file directory.
+
+WHAT IS NOT CLAIMED HERE. An earlier draft of this paragraph explained the
+result — that npm treats building a git dependency as preparation rather than as
+a consumer-side lifecycle script, so the flag does not reach it. That sentence
+is removed. It is a plausible mechanism and I did not read it anywhere; I
+inferred it from two install probes and then wrote it as though it were how npm
+is specified. No npm documentation and no npm issue was opened, so no npm
+behaviour is attributed here beyond what the two commands printed.
+
+This matters more than a hedge. This repository has already had one invented
+citation repeat itself into fact across two sessions, and a mechanism sentence
+is exactly how that starts: it is more quotable than the measurement, it
+survives the version it was measured on, and nobody re-checks it.
+
+What follows from the observation alone is narrow and sufficient: on npm 10.9.4
+this packaging works under `--ignore-scripts`, that has been checked on no other
+npm, and if a future npm honours the flag here the silently-green three-file
+install returns with no signal at all. Anyone relying on it should re-run the
+probe on their own npm, which takes about a minute.
 
 **`declarationMap` and `sourceMap` were on, and the sources they point at are
 not packed. FIXED 2026-08-27; both are now off in `tsconfig.build.json`.**
