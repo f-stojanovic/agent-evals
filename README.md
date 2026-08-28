@@ -126,7 +126,7 @@ Three things worth stating so the result is not read as better than it is:
 Both figures are anchored to committed archives rather than retyped:
 `evals/baseline.freetext.json` holds the before, `evals/baseline.enums-prescorer.json`
 holds the after, and a test fails if the prose and the archives disagree.
-Neither is a gate — nothing compares against them.
+Neither is a gate; nothing compares against them.
 
 The reasoning is [ADR 016](docs/decisions/016-categorical-fields-are-constrained-by-schema.md),
 including why `semanticSimilarity` on that field would have been the wrong fix.
@@ -263,7 +263,7 @@ So the scorer follows the field
 - **Enum fields** → `exactFields`. The set is closed and the API rejects
   anything outside it, so equality is the right question. The `exact-fields`
   column in the run block above is at or near 1.00 throughout, where free text
-  scored 0.75 across the board — the archived before and after are
+  scored 0.75 across the board; the archived before and after are
   `evals/baseline.freetext.json` and `evals/baseline.enums-prescorer.json`.
 - **Free text** → `semanticSimilarity` projected onto that one field, and
   `llmJudge` where the rubric needs prose. Never embed the whole payload: the
@@ -279,7 +279,7 @@ do, it is why [ADR 010](docs/decisions/010-uncalibrated-constants-are-counted.md
 deleted the rescale that used to hide it, and it is why the default 0.8 cutoff
 puts correct summaries below threshold. That cutoff is a guess, it is declared
 as one in every report, and calibrating it against labelled pairs was attempted
-and failed — see the table below.
+and failed; see the table below.
 
 Semantic similarity also cannot catch a fluent lie: a summary confidently wrong
 about the order number still lands close to the expected paraphrase. The enum
@@ -449,7 +449,7 @@ scorer never means editing the case contract. The cost of that openness is that
 silence is ambiguous, and it fails in two directions. Both are hard errors,
 checked before the first API call ([ADR 005](docs/decisions/005-two-guards-against-a-suite-that-measures-nothing.md)).
 
-**Guard one — a key nobody reads.** Write `field:` where you meant `fields:` and
+**Guard one, a key nobody reads.** Write `field:` where you meant `fields:` and
 the file is valid YAML, satisfies the schema, and loads without complaint. Then
 nobody reads it. Any expectation key no scorer claims fails the run, grouped by
 key with a suggestion:
@@ -459,7 +459,7 @@ unclaimed key "field" in 8 cases (no scorer claims it; did you mean "fields"?):
 case-0, case-1, case-2, case-3, case-4, ... (+3 more)
 ```
 
-**Guard two — a case nobody measures.** Every scorer skips it, correctly and
+**Guard two, a case nobody measures.** Every scorer skips it, correctly and
 individually: no `fields`, no `schema`, no `toolCalls`. Each skip is a
 reasonable local decision; together they mean the case runs, costs money, and
 checks nothing. Each claim carries a `required` flag, and a case that every
@@ -473,13 +473,13 @@ nobody enables is not a control.
 
 Extraction can fail two ways, and they are recorded differently.
 
-**`unreadable`** — the response contained no parseable JSON at all. The model
+**`unreadable`**: the response contained no parseable JSON at all. The model
 was asked for JSON and produced none. That is a fact *about the model*, so it
 scores **0.0 with a reason and goes into the baseline** — which means the day a
 subject stops emitting JSON, the suite shows a score drop rather than an
 infrastructure error nobody can trend.
 
-**`ambiguous`** — several fenced blocks each parsed and there is no principled
+**`ambiguous`**: several fenced blocks each parsed and there is no principled
 way to choose. First-wins scores the model's scratch work; last-wins scores a
 trailing example. Nothing about the model was established, so the case is
 **errored and excluded from the baseline**. An invented measurement is worse
@@ -497,7 +497,7 @@ extraction are affected. One reading `output.text` directly still scores.
 `llmJudge` grades a case against a prose rubric by asking a different model. It
 is also the only scorer that is itself a probabilistic system with unknown
 accuracy, and adopting one without measuring it does not remove the unmeasured
-part of your pipeline — it moves it one level down and attaches a number to it.
+part of your pipeline; it moves it one level down and attaches a number to it.
 
 So `evals/calibration/` holds cases with human-assigned scores spanning the
 range, each paired with a frozen output. `npm run calibrate` reports mean
@@ -543,7 +543,7 @@ Three details that matter:
   variance production has, and the gate derives its allowance from exactly that
   number. Judge variance gets its own command,
   `npm run judge:variance`, which holds the output fixed and asks k=5 times.
-  The measured spread is small — run the command to see the current figure
+  The measured spread is small; run the command to see the current figure
   ([ADR 014](docs/decisions/014-judge-and-subject-sampling-are-not-multiplied.md)).
 
 ## Counting the assumptions
@@ -572,7 +572,7 @@ not have, and return a different answer each time. So there are two gates
 an older format and exits 1](docs/images/gate-refuses-stale-baseline.png)
 
 *`eval-live` refusing a baseline recorded in an older format, on real CI
-against a genuinely stale file. This is the guard firing — not a caught
+against a genuinely stale file. This is the guard firing, not a caught
 regression. Nothing has yet changed a prompt and been caught by the gate;
 that is still open below.*
 
@@ -595,10 +595,10 @@ to prevent: the cron is configured, and configuration is not evidence.
 
 ## Status
 
-- [x] Domain types — the stable contract
+- [x] Domain types: the stable contract
 - [x] YAML case loader with actionable errors and stable ordering
 - [x] Both wiring guards: unclaimed keys, and cases nothing measures
-- [x] Score contract enforcement — finite, 0..1, correctly attributed
+- [x] Score contract enforcement: finite, 0..1, correctly attributed
 - [x] Extraction with the route recorded; ambiguity refused rather than guessed
 - [x] Every shipped scorer is registered and has produced a number:
       `exactFields`, `matchesSchema`, `callsTool`, `formatCompliance`,
@@ -607,17 +607,17 @@ to prevent: the cron is configured, and configuration is not evidence.
 - [x] Judge calibration against human labels (`npm run calibrate`)
 - [x] Documentation checks as tests (`src/docs.test.ts`), including a check that
       each check inspected a non-empty corpus
-- [x] `models.lock.json` — model changes are explicit and reviewable
-- [x] Runner — concurrency, sampling, retry with jitter, timeouts, disk cache,
+- [x] `models.lock.json`: model changes are explicit and reviewable
+- [x] Runner: concurrency, sampling, retry with jitter, timeouts, disk cache,
       cost accounting
 - [x] Baseline file and the CI gate, with a tolerance derived from variance
-- [x] Report — markdown and a JSON artifact
+- [x] Report: markdown and a JSON artifact
 - [x] CI: fixture gate on every push; live run on manual dispatch
 - [ ] Live run on the weekly schedule — the cron is configured (`0 3 * * 1`)
       and has never fired: the workflow was disabled over the one Monday that
       has passed since it was added. Ticks when a `schedule` run appears in the
       history, not before.
-- [x] Live judge calibration — the measured figure is in the generated block
+- [x] Live judge calibration: the measured figure is in the generated block
       under "Judging the judge"
 - [x] Live runs against a real subject, with the baseline recorded from one —
       see the generated run block for what the current baseline covers
