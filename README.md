@@ -20,6 +20,25 @@ alongside quality, because in practice all three constrain what you can ship.
 The point of the project is the gate: results are frozen into a committed
 baseline, every run is compared against it, and a regression fails the build.
 
+## Applied to a real agent
+
+[voice-check](https://github.com/f-stojanovic/voice-check) consumes this package
+as a git dependency, pinned to a commit SHA, and uses it to grade its `analyst`
+agent: source text in, a claim and its supporting quotes out, scored against my
+own sentence-level labels.
+
+The first thing it measured was those labels. Four labelling passes over one
+source, against the same recorded model output, moved the case mean
+0.192 → 0.111 → 0.661 → 0.411 with the agent untouched. A ±1 sentence window,
+adopted after watching a scorer return zero and reverted once that ordering was
+written down, accounted for 0.25 of that range by itself. No baseline was
+adopted; same call, and same reason, as the semantic scorer's threshold below.
+
+Those four figures are the historical record, in that repository's ADR 019. The
+recording they were measured against has since been replaced by a later one, so
+a fresh replay there reports a different number; the point is the spread, not
+any single value in it.
+
 ## Why not promptfoo / Braintrust / Langfuse?
 
 Those tools are good at what this one deliberately isn't: promptfoo at quick
